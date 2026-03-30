@@ -73,18 +73,18 @@ def _deliver_via_xcallback(title: str, body: str, tags: list[str]) -> bool:
 
 
 def _deliver_via_applescript(title: str, body: str, tags: list[str]) -> bool:
-    """Create a Bear note using AppleScript via osascript."""
+    """Create a Bear note using AppleScript via osascript.
+
+    Text is passed as an argv argument rather than interpolated into the
+    script string, avoiding any AppleScript injection from feed content.
+    """
     try:
         tag_lines = "\n\n" + " ".join(f"#{tag}" for tag in tags)
         full_text = f"# {title}\n\n{body}{tag_lines}"
-        escaped_text = full_text.replace("\\", "\\\\").replace('"', '\\"')
-        script = f'''
-        tell application "Bear"
-            create note with text "{escaped_text}"
-        end tell
-        '''
+        script = 'on run argv\ntell application "Bear"\ncreate note with text (item 1 of argv)\nend tell\nend run'
         result = subprocess.run(
-            ["osascript", "-e", script], capture_output=True, text=True, timeout=15,
+            ["osascript", "-e", script, "--", full_text],
+            capture_output=True, text=True, timeout=15,
         )
         if result.returncode == 0:
             logger.info("Delivered to Bear via AppleScript: %s", title)
