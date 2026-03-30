@@ -5,3 +5,4 @@ __pycache__/
 *.db
 *.log
 .DS_Store
+.claude
