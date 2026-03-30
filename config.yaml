@@ -1,0 +1,161 @@
+# Cyber Briefing Tool — Configuration
+# Edit this file to tune sources, scoring, and delivery.
+
+scoring:
+  weights:
+    geographic: 1.0
+    domain: 1.5
+    actionability: 1.2
+    novelty: 0.8
+  threshold: 10.0       # Minimum composite score for inclusion
+  max_items: 15          # Maximum items in the briefing
+  model: "claude-sonnet-4-20250514"
+
+delivery:
+  method: "bear"         # bear | stdout | markdown_file
+  bear_tag: "security/briefing/daily"
+  markdown_output_dir: "~/cyberbriefing-output"
+
+schedule:
+  hour: 6
+  minute: 0
+
+# NVD filtering
+nvd:
+  min_cvss: 7.0
+  # CWE IDs particularly relevant to appsec
+  priority_cwes:
+    - "CWE-89"    # SQL injection
+    - "CWE-79"    # XSS
+    - "CWE-862"   # Missing authorisation
+    - "CWE-863"   # Incorrect authorisation
+    - "CWE-918"   # SSRF
+    - "CWE-352"   # CSRF
+    - "CWE-502"   # Deserialisation
+    - "CWE-611"   # XXE
+    - "CWE-94"    # Code injection
+    - "CWE-78"    # OS command injection
+    - "CWE-287"   # Improper authentication
+    - "CWE-306"   # Missing authentication
+    - "CWE-639"   # IDOR
+    - "CWE-284"   # Improper access control
+    - "CWE-1321"  # Prototype pollution
+
+sources:
+  # Tier 1: Structured APIs
+  cisa_kev:
+    enabled: true
+    type: api
+    url: "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    category: advisory
+
+  nvd:
+    enabled: true
+    type: api
+    url: "https://services.nvd.nist.gov/rest/json/cves/2.0"
+    category: advisory
+
+  hackerone:
+    enabled: true
+    type: api
+    url: "https://api.hackerone.com/v1/hackers/hacktivity"
+    category: bounty
+    requires_auth: true
+
+  github_advisories:
+    enabled: true
+    type: api
+    url: "https://api.github.com/graphql"
+    category: advisory
+
+  # Tier 2: RSS Feeds
+  rss_feeds:
+    ncsc_all:
+      url: "https://www.ncsc.gov.uk/api/1/services/v1/all-rss-feed.xml"
+      category: advisory
+      source_name: "NCSC"
+
+    ncsc_reports:
+      url: "https://www.ncsc.gov.uk/api/1/services/v1/report-rss-feed.xml"
+      category: advisory
+      source_name: "NCSC Reports"
+
+    thehackernews:
+      url: "https://feeds.feedburner.com/TheHackersNews"
+      category: breach
+      source_name: "The Hacker News"
+
+    portswigger_research:
+      url: "https://portswigger.net/research/rss"
+      category: research
+      source_name: "PortSwigger Research"
+
+    portswigger_daily:
+      url: "https://portswigger.net/daily-swig/rss"
+      category: advisory
+      source_name: "PortSwigger Daily Swig"
+
+    krebs:
+      url: "https://krebsonsecurity.com/feed/"
+      category: breach
+      source_name: "Krebs on Security"
+
+    bleepingcomputer:
+      url: "https://www.bleepingcomputer.com/feed/"
+      category: breach
+      source_name: "BleepingComputer"
+
+    risky_biz:
+      url: "https://risky.biz/feeds/risky-business/"
+      category: breach
+      source_name: "Risky Business"
+
+    owasp:
+      url: "https://owasp.org/feed.xml"
+      category: research
+      source_name: "OWASP"
+
+    aws_security:
+      url: "https://aws.amazon.com/blogs/security/feed/"
+      category: vendor
+      source_name: "AWS Security"
+
+    azure_updates:
+      url: "https://azurecomcdn.azureedge.net/en-gb/updates/feed/"
+      category: vendor
+      source_name: "Azure Updates"
+
+    parliament_news:
+      url: "https://www.parliament.uk/business/news/feed/"
+      category: policy
+      source_name: "UK Parliament"
+      keyword_filter:
+        - "cyber"
+        - "security"
+        - "data protection"
+        - "digital"
+        - "NCSC"
+        - "encryption"
+
+  # Tier 3: Scrapers (less frequent, more fragile)
+  scrapers:
+    enisa:
+      enabled: true
+      url: "https://www.enisa.europa.eu/publications"
+      category: policy
+      source_name: "ENISA"
+      check_interval_hours: 24
+
+    ico:
+      enabled: true
+      url: "https://ico.org.uk/action-weve-taken/enforcement/"
+      category: policy
+      source_name: "ICO"
+      check_interval_hours: 168  # weekly
+
+    commons_library:
+      enabled: true
+      url: "https://commonslibrary.parliament.uk/research-briefings/cbp-9821/"
+      category: policy
+      source_name: "Commons Library"
+      check_interval_hours: 168  # weekly
