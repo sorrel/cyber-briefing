@@ -9,6 +9,7 @@ scoring:
     novelty: 0.8
   threshold: 10.0       # Minimum composite score for inclusion
   max_items: 15          # Maximum items in the briefing
+  max_score_input: 150   # Cap items sent to Claude (sorted by recency first)
   model: "claude-sonnet-4-20250514"
 
 delivery:
@@ -90,10 +91,10 @@ sources:
       category: research
       source_name: "PortSwigger Research"
 
-    portswigger_daily:
-      url: "https://portswigger.net/daily-swig/rss"
-      category: advisory
-      source_name: "PortSwigger Daily Swig"
+    portswigger_blog:
+      url: "https://portswigger.net/blog/rss"
+      category: research
+      source_name: "PortSwigger Blog"
 
     krebs:
       url: "https://krebsonsecurity.com/feed/"
@@ -119,23 +120,6 @@ sources:
       url: "https://aws.amazon.com/blogs/security/feed/"
       category: vendor
       source_name: "AWS Security"
-
-    azure_updates:
-      url: "https://azurecomcdn.azureedge.net/en-gb/updates/feed/"
-      category: vendor
-      source_name: "Azure Updates"
-
-    parliament_news:
-      url: "https://www.parliament.uk/business/news/feed/"
-      category: policy
-      source_name: "UK Parliament"
-      keyword_filter:
-        - "cyber"
-        - "security"
-        - "data protection"
-        - "digital"
-        - "NCSC"
-        - "encryption"
 
   # Tier 3: Scrapers (less frequent, more fragile)
   scrapers:

@@ -5,6 +5,7 @@ suitable for Bear Notes.
 """
 
 import logging
+from collections import Counter
 from datetime import datetime, timezone
 
 logger = logging.getLogger("cyberbriefing.delivery.formatter")
@@ -115,9 +116,11 @@ def format_briefing(
         lines.append("*No items above threshold today. Quiet day.*")
         lines.append("")
 
-    # Compose final tags list
+    # Compose final tags list — cap at 10 topic tags, keeping most common across items
+    tag_counts = Counter(all_tags)
+    top_tags = [tag for tag, _ in tag_counts.most_common(10)]
     bear_tags = ["security/briefing/daily"]
-    for tag in sorted(all_tags):
+    for tag in sorted(top_tags):
         bear_tags.append(f"security/briefing/{tag}")
 
     body = "\n".join(lines)

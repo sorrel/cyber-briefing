@@ -1,77 +1,69 @@
 """ICO enforcement actions scraper.
 
-Scrapes the ICO's enforcement actions page. Run weekly.
+Uses the ICO's internal search JSON API rather than scraping HTML,
+since the enforcement page loads results client-side via JavaScript.
+Runs weekly.
 """
 
 import logging
 
 import requests
-from bs4 import BeautifulSoup
 
 from .base import make_item, truncate
 
 logger = logging.getLogger("cyberbriefing.collectors.ico_scraper")
 
-ICO_URL = "https://ico.org.uk/action-weve-taken/enforcement/"
+ICO_SEARCH_API = "https://ico.org.uk/api/search"
+ICO_ROOT_PAGE_ID = 17222  # data-node-id from the enforcement page
+ICO_BASE_URL = "https://ico.org.uk"
 
 
 def collect(config: dict | None = None) -> list[dict]:
-    """Scrape the ICO enforcement actions page."""
+    """Fetch ICO enforcement actions via the search API."""
     logger.info("Scraping ICO enforcement actions")
 
     try:
-        resp = requests.get(
-            ICO_URL,
+        resp = requests.post(
+            ICO_SEARCH_API,
+            json={"rootPageId": ICO_ROOT_PAGE_ID, "pageNumber": 1, "order": "newest", "filters": []},
             timeout=30,
             headers={
-                "User-Agent": "CyberBriefingBot/1.0 (personal security briefing tool)"
+                "User-Agent": "CyberBriefingBot/1.0 (personal security briefing tool)",
+                "Content-Type": "application/json",
             },
         )
         resp.raise_for_status()
+        data = resp.json()
     except Exception as e:
         logger.error("Failed to fetch ICO enforcement: %s", e)
         return []
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    results = data.get("results", [])
     items = []
 
-    # ICO enforcement pages typically list actions as linked entries
-    for link_tag in soup.select("a[href*='/action-weve-taken/enforcement/']"):
-        title = link_tag.get_text(strip=True)
-        href = link_tag.get("href", "")
+    for result in results:
+        title = (result.get("title") or "").strip()
+        url = (result.get("url") or "").strip()
 
-        if not title or not href or len(title) < 10:
+        if not title or not url:
             continue
 
-        if href.startswith("/"):
-            href = "https://ico.org.uk" + href
+        if url.startswith("/"):
+            url = ICO_BASE_URL + url
 
-        # Skip self-referential links to the main enforcement page
-        if href.rstrip("/") == ICO_URL.rstrip("/"):
-            continue
-
-        parent = link_tag.find_parent(["li", "div", "article", "tr"])
-        snippet = ""
-        if parent:
-            snippet = parent.get_text(strip=True)[:300]
+        snippet = (result.get("description") or "").strip()
+        published = result.get("date") or None
 
         items.append(
             make_item(
                 source="ico",
                 title=title,
-                url=href,
+                url=url,
                 snippet=truncate(snippet),
                 category="policy",
+                published=published,
             )
         )
 
-    # Deduplicate by URL
-    seen_urls = set()
-    unique_items = []
-    for item in items:
-        if item["url"] not in seen_urls:
-            seen_urls.add(item["url"])
-            unique_items.append(item)
-
-    logger.info("Scraped %d ICO enforcement actions", len(unique_items))
-    return unique_items
+    logger.info("Scraped %d ICO enforcement actions", len(items))
+    return items

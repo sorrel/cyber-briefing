@@ -162,12 +162,26 @@ def run_pipeline(
         return True
 
     # --- Stage 2: Prioritise ---
+    scoring_config = config.get("scoring", {})
+    max_score_input = scoring_config.get("max_score_input", 150)
+
+    # Sort by recency (newest first) and cap before sending to Claude.
+    # Handles first-run floods (e.g. full CISA KEV catalogue) gracefully.
+    items_to_score = sorted(
+        new_items,
+        key=lambda x: x.get("published") or "",
+        reverse=True,
+    )[:max_score_input]
+
     logger.info("=" * 50)
-    logger.info("Stage 2: Scoring %d items with Claude", len(new_items))
+    logger.info(
+        "Stage 2: Scoring %d items with Claude (capped from %d new)",
+        len(items_to_score),
+        len(new_items),
+    )
     logger.info("=" * 50)
 
-    scoring_config = config.get("scoring", {})
-    scored_result = score_items(new_items, scoring_config)
+    scored_result = score_items(items_to_score, scoring_config)
 
     scored_items = scored_result.get("items", [])
     if not scored_items:
