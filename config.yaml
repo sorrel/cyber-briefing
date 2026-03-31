@@ -121,6 +121,16 @@ sources:
       category: vendor
       source_name: "AWS Security"
 
+    feistyduck:
+      url: "https://blog.ivanristic.com/atom.xml"
+      category: research
+      source_name: "FeistyDuck (Ivan Ristić)"
+
+    feistyduck_newsletter:
+      url: "https://www.feistyduck.com/newsletter/feed"
+      category: research
+      source_name: "FeistyDuck Newsletter"
+
   # Tier 3: Scrapers (less frequent, more fragile)
   scrapers:
     enisa:
