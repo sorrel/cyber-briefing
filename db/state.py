@@ -48,6 +48,21 @@ def is_seen(conn: sqlite3.Connection, item_id: str) -> bool:
     return row is not None
 
 
+def filter_unseen(conn: sqlite3.Connection, items: list[dict]) -> list[dict]:
+    """Return only items not yet in the database — single query regardless of input size."""
+    if not items:
+        return []
+    ids = [item["id"] for item in items]
+    placeholders = ",".join("?" * len(ids))
+    seen = {
+        row[0]
+        for row in conn.execute(
+            f"SELECT item_id FROM seen_items WHERE item_id IN ({placeholders})", ids
+        )
+    }
+    return [item for item in items if item["id"] not in seen]
+
+
 def mark_seen(
     conn: sqlite3.Connection,
     item_id: str,

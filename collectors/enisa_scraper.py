@@ -35,6 +35,7 @@ def collect(config: dict | None = None) -> list[dict]:
 
     soup = BeautifulSoup(resp.text, "html.parser")
     items = []
+    seen_urls: set[str] = set()
 
     # ENISA's publications page structure may change — this is best-effort.
     # Look for article/publication cards with links and titles.
@@ -49,15 +50,16 @@ def collect(config: dict | None = None) -> list[dict]:
         if href.startswith("/"):
             href = "https://www.enisa.europa.eu" + href
 
-        # Skip non-publication links (navigation, etc.)
-        if "/publications/" not in href:
+        # Skip non-publication links (navigation, etc.) and duplicates
+        if "/publications/" not in href or href in seen_urls:
             continue
+
+        seen_urls.add(href)
 
         # Try to extract a snippet from surrounding context
         parent = link_tag.find_parent(["article", "div", "li"])
         snippet = ""
         if parent:
-            # Look for a description element
             desc = parent.find(["p", "span"], class_=lambda c: c and "desc" in str(c).lower())
             if desc:
                 snippet = desc.get_text(strip=True)
@@ -74,13 +76,5 @@ def collect(config: dict | None = None) -> list[dict]:
             )
         )
 
-    # Deduplicate by URL (page may have multiple links to same publication)
-    seen_urls = set()
-    unique_items = []
-    for item in items:
-        if item["url"] not in seen_urls:
-            seen_urls.add(item["url"])
-            unique_items.append(item)
-
-    logger.info("Scraped %d ENISA publications", len(unique_items))
-    return unique_items
+    logger.info("Scraped %d ENISA publications", len(items))
+    return items

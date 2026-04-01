@@ -24,7 +24,7 @@ from collectors import rss, cisa_kev, nvd, hackerone, github_advisories
 from collectors import enisa_scraper, ico_scraper
 from db.state import (
     get_connection,
-    is_seen,
+    filter_unseen,
     mark_seen_batch,
     should_check_scraper,
     update_scraper_run,
@@ -114,7 +114,7 @@ def gather_all(config: dict, db_conn) -> list[dict]:
 
     # --- Filter to unseen items only ---
 
-    new_items = [item for item in all_items if not is_seen(db_conn, item["id"])]
+    new_items = filter_unseen(db_conn, all_items)
 
     logger = logging.getLogger("cyberbriefing")
     logger.info(
@@ -217,16 +217,11 @@ def run_pipeline(
 
     # Mark items as seen — track which ones were included in the briefing
     included_ids = {item.get("id") for item in scored_items}
-    mark_seen_batch(
-        db_conn,
-        [i for i in new_items if i["id"] in included_ids],
-        included=True,
-    )
-    mark_seen_batch(
-        db_conn,
-        [i for i in new_items if i["id"] not in included_ids],
-        included=False,
-    )
+    included, excluded = [], []
+    for item in new_items:
+        (included if item["id"] in included_ids else excluded).append(item)
+    mark_seen_batch(db_conn, included, included=True)
+    mark_seen_batch(db_conn, excluded, included=False)
 
     if success:
         logger.info("Briefing delivered successfully: %s", title)

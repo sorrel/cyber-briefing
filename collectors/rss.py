@@ -5,6 +5,7 @@ Supports optional keyword filtering (e.g. for Parliament news).
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from time import mktime
 from typing import Optional
@@ -104,8 +105,6 @@ def _extract_snippet(entry: dict) -> str:
                 text = content_block["value"]
                 break
 
-    # Strip HTML tags crudely (good enough for snippets)
-    import re
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()

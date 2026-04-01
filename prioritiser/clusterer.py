@@ -41,9 +41,6 @@ def cluster_items(scored_items: list[dict], all_items: list[dict]) -> list[dict]
         cluster_items_list.sort(
             key=lambda x: x.get("composite", 0), reverse=True
         )
-        primary = cluster_items_list[0]
-
-        # Collect "also covered by" from other items in the cluster
         also_covered = []
         for other in cluster_items_list[1:]:
             other_id = other.get("id", "")
@@ -53,13 +50,11 @@ def cluster_items(scored_items: list[dict], all_items: list[dict]) -> list[dict]
             if url:
                 also_covered.append({"source": source_name, "url": url})
 
-        primary["also_covered_by"] = also_covered
-        result.append(primary)
+        result.append({**cluster_items_list[0], "also_covered_by": also_covered})
 
     # Add unclustered items
     for item in unclustered:
-        item["also_covered_by"] = []
-        result.append(item)
+        result.append({**item, "also_covered_by": []})
 
     # Sort final list by composite score descending
     result.sort(key=lambda x: x.get("composite", 0), reverse=True)
