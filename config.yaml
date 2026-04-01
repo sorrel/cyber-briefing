@@ -131,6 +131,11 @@ sources:
       category: research
       source_name: "FeistyDuck Newsletter"
 
+    the_register:
+      url: "https://www.theregister.com/security/headlines.atom"
+      category: news
+      source_name: "The Register"
+
   # Tier 3: Scrapers (less frequent, more fragile)
   scrapers:
     enisa:

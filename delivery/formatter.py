@@ -14,9 +14,10 @@ TIER_HEADERS = {
     "critical": "## 🔴 Critical — act on these",
     "notable": "## 🟡 Notable — worth reading",
     "radar": "## 📋 On your radar",
+    "britain": "## 🇬🇧 Britain",
 }
 
-TIER_ORDER = ["critical", "notable", "radar"]
+TIER_ORDER = ["critical", "notable", "radar", "britain"]
 
 
 def format_briefing(
@@ -87,6 +88,16 @@ def format_briefing(
             item_tags = item.get("tags", [])
             composite = item.get("composite", 0)
 
+            if tier_key == "britain":
+                # Headlines-only: headline linked, source name in italics
+                if item_url:
+                    lines.append(f"- [{summary}]({item_url}) · *{item_source}*")
+                else:
+                    lines.append(f"- {summary} · *{item_source}*")
+                lines.append("")
+                all_tags.update(item_tags)
+                continue
+
             # Heading with primary link
             lines.append(f"### {summary}")
 
@@ -150,5 +161,6 @@ def _pretty_source(slug: str) -> str:
         "uk_parliament": "UK Parliament",
         "aws_security": "AWS Security",
         "azure_updates": "Azure Updates",
+        "the_register": "The Register",
     }
     return names.get(slug, slug.replace("_", " ").title())

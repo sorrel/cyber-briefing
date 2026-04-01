@@ -44,7 +44,18 @@ Assign tiers:
 - "critical": score >= 17 (act on these immediately)
 - "notable": score >= 13 (worth reading today)
 - "radar": score >= 10 (awareness, may become important)
-- Below 10: exclude from the briefing
+- "britain": UK or EU headline that scored below 10, but is worth a brief mention as a UK news item (geographic >= 4, typically from sources like The Register, NCSC, ICO, or UK/EU policy outlets). These are headline-only — interesting but not operationally urgent.
+- Below 10 and not britain-eligible: exclude from the briefing
+
+## Source guidance: The Register
+
+The Register is a UK tech news outlet. Score it on its merits with these calibrations:
+
+- **If the story is a genuine appsec finding, breach, or advisory** and not already covered by a more technical source: score all dimensions normally and include it in the main tiers (critical/notable/radar).
+- **If the story is opinion, commentary, or general tech news** with no concrete security takeaway: actionability 1–2, novelty 1–2.
+- **Geographic**: 5 for UK-specific stories, 3 for global.
+- **If the item duplicates a story already present from BleepingComputer, The Hacker News, NCSC etc.**: cluster them together under the higher-quality source; do not promote the Register item as the primary unless it adds unique UK context.
+- Use the "britain" tier for Register items that score below 10 but have geographic >= 4 and are worth a headline mention.
 
 ## Output format
 
