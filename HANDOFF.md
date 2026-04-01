@@ -8,10 +8,10 @@
 
 ```bash
 # Move the project into place
-mv cyberbriefing /Users/duncan/Documents/Program/scripts/
+mv cyberbriefing /path/to/your/scripts/
 
 # Set up with uv
-cd /Users/duncan/Documents/Program/scripts/cyberbriefing
+cd /path/to/your/scripts/cyberbriefing
 uv venv
 source .venv/bin/activate
 uv pip install -r requirements.txt

@@ -14,7 +14,7 @@ Runs a three-stage pipeline every morning at 06:00:
 
 ```bash
 # 1. Move into your scripts directory
-cd /Users/duncan/Documents/Program/scripts/cyberbriefing
+cd /path/to/cyberbriefing
 
 # 2. Create a virtual environment
 python3 -m venv .venv
