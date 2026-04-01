@@ -162,5 +162,6 @@ def _pretty_source(slug: str) -> str:
         "aws_security": "AWS Security",
         "azure_updates": "Azure Updates",
         "the_register": "The Register",
+        "tldr_infosec": "TLDR Infosec",
     }
     return names.get(slug, slug.replace("_", " ").title())

@@ -158,3 +158,8 @@ sources:
       category: policy
       source_name: "Commons Library"
       check_interval_hours: 168  # weekly
+
+    tldr_infosec:
+      enabled: true
+      source_name: "TLDR Infosec"
+      check_interval_hours: 23   # daily, Mon–Fri
