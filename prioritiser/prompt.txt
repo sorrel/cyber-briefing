@@ -47,6 +47,25 @@ Assign tiers:
 - "britain": UK or EU headline that scored below 10, but is worth a brief mention as a UK news item (geographic >= 4, typically from sources like The Register, NCSC, ICO, or UK/EU policy outlets). These are headline-only — interesting but not operationally urgent.
 - Below 10 and not britain-eligible: exclude from the briefing
 
+## Topic guidance: WordPress
+
+WordPress vulnerabilities are extremely common and rarely novel. Apply these calibrations:
+
+- **Plugin/theme vulnerabilities with no active exploitation**: actionability 1–2, novelty 1. These are routine; do not promote to main tiers unless there is a clear appsec lesson beyond "update your plugins."
+- **Actively exploited WordPress CVEs (CISA KEV)**: score normally — KEV status overrides this guidance.
+- **Mass exploitation campaigns or novel WordPress attack chains**: score normally if genuinely novel technique.
+- In practice, most WordPress items should score below 10 and be excluded. Be ruthless.
+
+## Topic guidance: Finance and financial crime
+
+Finance, financial services, and financial crime are high-priority for this professional. Apply these calibrations:
+
+- **Breaches or attacks on banks, payment processors, fintech, or crypto platforms**: domain 4–5, boost actionability by 1 if UK/EU institution affected.
+- **Financial crime with a cyber angle** (fraud, business email compromise, money laundering via crypto, account takeover at scale): domain 4, actionability 3–4.
+- **UK financial sector specifically** (FCA enforcement, UK bank breaches, Open Banking vulnerabilities, UK fintech incidents): geographic 5, domain 4–5.
+- **Regulatory actions against financial institutions** (FCA, PRA, ECB, FinCEN): geographic 4–5, actionability 3–4 — these have direct professional relevance.
+- Do not artificially inflate scores for generic financial news with no security angle.
+
 ## Source guidance: The Register
 
 The Register is a UK tech news outlet. Score it on its merits with these calibrations:
