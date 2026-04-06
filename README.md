@@ -6,7 +6,7 @@ A daily cybersecurity intelligence briefing delivered to Bear Notes, tailored fo
 
 Runs a three-stage pipeline every morning at 06:00:
 
-1. **Gather** — Pulls from 25+ sources: CISA KEV, NVD, HackerOne, GitHub Advisories, NCSC, The Hacker News, PortSwigger, Krebs on Security, BleepingComputer, ENISA, ICO, UK Parliament, AWS Security, Wiz, Snyk, OWASP, Risky Business, TLDR Infosec, Aikido, CloudSecList, FeistyDuck, and more.
+1. **Gather** — Pulls from 25+ sources: CISA KEV, NVD, HackerOne, GitHub Advisories, NCSC, The Hacker News, PortSwigger, Krebs on Security, BleepingComputer, ENISA, ICO, UK Parliament, AWS Security, Wiz, Snyk, OWASP, Risky Business, TLDR Infosec, Aikido, CloudSecList, FeistyDuck, This Week in Security, and more.
 2. **Prioritise** — Sends items to the Claude API for scoring across four dimensions (geographic relevance, domain relevance, actionability, novelty) with weights tuned for UK-based appsec work.
 3. **Deliver** — Creates a Bear Note with up to 20 prioritised items, grouped by urgency tier, with links and short annotations.
 

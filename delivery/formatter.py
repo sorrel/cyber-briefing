@@ -167,5 +167,6 @@ def _pretty_source(slug: str) -> str:
         "wiz_blog": "Wiz Blog",
         "snyk_blog": "Snyk Blog",
         "aikido": "Aikido Security",
+        "this_week_in_security": "This Week in Security",
     }
     return names.get(slug, slug.replace("_", " ").title())

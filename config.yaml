@@ -148,6 +148,7 @@ sources:
       source_name: "Snyk Blog"
       max_entries: 30
 
+
   # Tier 3: Scrapers (less frequent, more fragile)
   scrapers:
     enisa:
@@ -185,3 +186,8 @@ sources:
       enabled: true
       source_name: "Aikido Security Blog"
       check_interval_hours: 23   # daily
+
+    this_week_in_security:
+      enabled: true
+      source_name: "This Week in Security"
+      check_interval_hours: 168  # weekly (Sunday editions)
