@@ -13,7 +13,7 @@ import logging
 import requests
 from bs4 import BeautifulSoup
 
-from .base import make_item, truncate
+from .base import USER_AGENT_BROWSER, make_item, truncate
 
 logger = logging.getLogger("cyberbriefing.collectors.aikido")
 
@@ -23,13 +23,7 @@ BASE_URL = "https://www.aikido.dev"
 # Fetch the top N posts — the listing is sorted newest-first
 MAX_POSTS = 25
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    )
-}
+HEADERS = {"User-Agent": USER_AGENT_BROWSER}
 
 
 def collect(config: dict | None = None) -> list[dict]:

@@ -136,6 +136,38 @@ def update_scraper_run(conn: sqlite3.Connection, source: str) -> None:
     conn.commit()
 
 
+def clear_source(conn: sqlite3.Connection, source: str) -> int:
+    """Delete all seen_items records for a given source.
+
+    Useful when you want a source to re-gather from scratch (e.g. after adding
+    a new source mid-run, or resetting a broken scraper).
+
+    Returns the number of rows deleted.
+    """
+    cursor = conn.execute("DELETE FROM seen_items WHERE source = ?", (source,))
+    conn.commit()
+    return cursor.rowcount
+
+
+def prune_old_unseen(conn: sqlite3.Connection, days: int = 180) -> int:
+    """Delete seen_items that were never included in a briefing and are older than `days`.
+
+    Items that made it into at least one briefing (included_in_briefing = 1) are
+    kept forever — they form the history of what was reported. Everything else
+    accumulates indefinitely, so this prune keeps the DB lean.
+
+    Returns the number of rows deleted.
+    """
+    cursor = conn.execute(
+        """DELETE FROM seen_items
+           WHERE included_in_briefing = 0
+           AND first_seen < datetime('now', ?)""",
+        (f"-{days} days",),
+    )
+    conn.commit()
+    return cursor.rowcount
+
+
 def get_stats(conn: sqlite3.Connection) -> dict:
     """Return basic statistics about the database."""
     total = conn.execute("SELECT COUNT(*) FROM seen_items").fetchone()[0]

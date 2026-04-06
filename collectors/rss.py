@@ -6,13 +6,11 @@ Supports optional keyword filtering (e.g. for Parliament news).
 
 import logging
 import re
-from datetime import datetime, timezone
-from time import mktime
-from typing import Optional
 
 import feedparser
+import requests
 
-from .base import make_item, truncate
+from .base import USER_AGENT_BOT, make_item, parse_feedparser_date, truncate
 
 logger = logging.getLogger("cyberbriefing.collectors.rss")
 
@@ -31,18 +29,29 @@ def collect(feed_config: dict) -> list[dict]:
     source_name = feed_config.get("source_name", url)
     category = feed_config.get("category", "advisory")
     keywords = feed_config.get("keyword_filter")
-    max_entries = feed_config.get("max_entries")  # optional cap on number of entries
+    max_entries = feed_config.get("max_entries")
 
     logger.info("Fetching RSS: %s (%s)", source_name, url)
 
+    # Fetch with requests so we can enforce a timeout — feedparser.parse(url)
+    # has no timeout and a hung feed would stall the whole pipeline.
     try:
-        feed = feedparser.parse(url)
+        resp = requests.get(
+            url,
+            timeout=30,
+            headers={"User-Agent": USER_AGENT_BOT},
+        )
+        resp.raise_for_status()
+        feed = feedparser.parse(resp.text)
+    except requests.Timeout:
+        logger.warning("Feed %s timed out after 30s — skipping", source_name)
+        return []
     except Exception as e:
-        logger.error("Failed to parse feed %s: %s", url, e)
+        logger.error("Failed to fetch/parse feed %s: %s", source_name, e)
         return []
 
     if feed.bozo and not feed.entries:
-        logger.warning("Feed %s returned bozo with no entries: %s", url, feed.bozo_exception)
+        logger.warning("Feed %s returned bozo with no entries: %s", source_name, feed.bozo_exception)
         return []
 
     entries = feed.entries
@@ -57,11 +66,10 @@ def collect(feed_config: dict) -> list[dict]:
         if not title or not link:
             continue
 
-        # Apply keyword filter if configured
         if keywords and not _matches_keywords(entry, keywords):
             continue
 
-        published = _parse_date(entry)
+        published = parse_feedparser_date(entry)
         snippet = _extract_snippet(entry)
 
         items.append(
@@ -81,28 +89,12 @@ def collect(feed_config: dict) -> list[dict]:
 
 def _matches_keywords(entry: dict, keywords: list[str]) -> bool:
     """Check whether an entry's title or summary contains any of the keywords."""
-    text = (
-        entry.get("title", "") + " " + entry.get("summary", "")
-    ).lower()
+    text = (entry.get("title", "") + " " + entry.get("summary", "")).lower()
     return any(kw.lower() in text for kw in keywords)
-
-
-def _parse_date(entry: dict) -> str:
-    """Extract a published date from a feed entry as ISO-8601."""
-    for field in ("published_parsed", "updated_parsed"):
-        parsed = entry.get(field)
-        if parsed:
-            try:
-                dt = datetime.fromtimestamp(mktime(parsed), tz=timezone.utc)
-                return dt.isoformat()
-            except (ValueError, OverflowError):
-                pass
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _extract_snippet(entry: dict) -> str:
     """Pull a text snippet from an entry's summary or content."""
-    # Prefer summary, fall back to content
     text = entry.get("summary", "")
     if not text and "content" in entry:
         for content_block in entry["content"]:

@@ -2,10 +2,11 @@
 """Cyber Briefing Tool — Daily cybersecurity intelligence briefing.
 
 Usage:
-    python briefing.py                  # Full run: gather, score, deliver to Bear
-    python briefing.py --dry-run        # Full run but print to stdout instead
-    python briefing.py --gather-only    # Just gather and show item count
-    python briefing.py --stats          # Show database statistics
+    python briefing.py                        # Full run: gather, score, deliver to Bear
+    python briefing.py --dry-run              # Full run but print to stdout instead
+    python briefing.py --gather-only          # Just gather and show item count
+    python briefing.py --stats                # Show database statistics
+    python briefing.py --clear-source <name>  # Reset seen-state for one source
 """
 
 import argparse
@@ -29,6 +30,8 @@ from db.state import (
     should_check_scraper,
     update_scraper_run,
     get_stats,
+    clear_source,
+    prune_old_unseen,
 )
 from prioritiser.scorer import score_items
 from prioritiser.clusterer import cluster_items
@@ -51,102 +54,69 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+# ---------------------------------------------------------------------------
+# Scraper registry
+# Each entry: (config_key, module, default_interval_hours)
+# config_key matches the key under sources.scrapers in config.yaml.
+# ---------------------------------------------------------------------------
+
+_SCRAPER_REGISTRY = [
+    ("enisa",                  enisa_scraper,        24),
+    ("ico",                    ico_scraper,          168),
+    ("tldr_infosec",           tldr_scraper,          23),
+    ("cloudseclist",           cloudseclist_scraper,  24),
+    ("aikido",                 aikido_scraper,        23),
+    ("this_week_in_security",  twis_scraper,         168),
+]
+
+
+def _run_scraper(db_conn, scrapers_config: dict, name: str, module, default_interval: int) -> list[dict]:
+    """Gate a scraper on its enabled flag and interval, then collect."""
+    conf = scrapers_config.get(name, {})
+    if not conf.get("enabled", True):
+        return []
+    interval = conf.get("check_interval_hours", default_interval)
+    if not should_check_scraper(db_conn, name, interval):
+        return []
+    items = module.collect(conf)
+    update_scraper_run(db_conn, name)
+    return items
+
+
 def gather_all(config: dict, db_conn) -> list[dict]:
     """Run all collectors and return unseen items."""
     all_items = []
 
     # --- Tier 1: Structured APIs ---
 
-    # CISA KEV
     if config.get("sources", {}).get("cisa_kev", {}).get("enabled", True):
-        items = cisa_kev.collect()
-        all_items.extend(items)
+        all_items.extend(cisa_kev.collect())
 
-    # NVD
     if config.get("sources", {}).get("nvd", {}).get("enabled", True):
-        nvd_config = config.get("nvd", {})
-        items = nvd.collect(nvd_config)
-        all_items.extend(items)
+        all_items.extend(nvd.collect(config.get("nvd", {})))
 
-    # HackerOne
     if config.get("sources", {}).get("hackerone", {}).get("enabled", True):
-        items = hackerone.collect()
-        all_items.extend(items)
+        all_items.extend(hackerone.collect())
 
-    # GitHub Advisories
     if config.get("sources", {}).get("github_advisories", {}).get("enabled", True):
-        items = github_advisories.collect()
-        all_items.extend(items)
+        all_items.extend(github_advisories.collect())
 
     # --- Tier 2: RSS Feeds ---
 
-    rss_feeds = config.get("sources", {}).get("rss_feeds", {})
-    for feed_name, feed_config in rss_feeds.items():
+    for feed_name, feed_config in config.get("sources", {}).get("rss_feeds", {}).items():
         try:
-            items = rss.collect(feed_config)
-            all_items.extend(items)
+            all_items.extend(rss.collect(feed_config))
         except Exception as e:
-            logging.getLogger("cyberbriefing").warning(
-                "RSS feed %s failed: %s", feed_name, e
-            )
+            logging.getLogger("cyberbriefing").warning("RSS feed %s failed: %s", feed_name, e)
 
     # --- Tier 3: Scrapers (interval-gated) ---
 
     scrapers = config.get("sources", {}).get("scrapers", {})
-
-    # ENISA
-    enisa_conf = scrapers.get("enisa", {})
-    if enisa_conf.get("enabled", True):
-        interval = enisa_conf.get("check_interval_hours", 24)
-        if should_check_scraper(db_conn, "enisa", interval):
-            items = enisa_scraper.collect(enisa_conf)
-            all_items.extend(items)
-            update_scraper_run(db_conn, "enisa")
-
-    # ICO
-    ico_conf = scrapers.get("ico", {})
-    if ico_conf.get("enabled", True):
-        interval = ico_conf.get("check_interval_hours", 168)
-        if should_check_scraper(db_conn, "ico", interval):
-            items = ico_scraper.collect(ico_conf)
-            all_items.extend(items)
-            update_scraper_run(db_conn, "ico")
-
-    # TLDR Infosec
-    tldr_conf = scrapers.get("tldr_infosec", {})
-    if tldr_conf.get("enabled", True):
-        interval = tldr_conf.get("check_interval_hours", 23)
-        if should_check_scraper(db_conn, "tldr_infosec", interval):
-            items = tldr_scraper.collect(tldr_conf)
-            all_items.extend(items)
-            update_scraper_run(db_conn, "tldr_infosec")
-
-    # CloudSecList (weekly)
-    csl_conf = scrapers.get("cloudseclist", {})
-    if csl_conf.get("enabled", True):
-        interval = csl_conf.get("check_interval_hours", 24)
-        if should_check_scraper(db_conn, "cloudseclist", interval):
-            items = cloudseclist_scraper.collect(csl_conf)
-            all_items.extend(items)
-            update_scraper_run(db_conn, "cloudseclist")
-
-    # Aikido Security blog (daily)
-    aikido_conf = scrapers.get("aikido", {})
-    if aikido_conf.get("enabled", True):
-        interval = aikido_conf.get("check_interval_hours", 23)
-        if should_check_scraper(db_conn, "aikido", interval):
-            items = aikido_scraper.collect(aikido_conf)
-            all_items.extend(items)
-            update_scraper_run(db_conn, "aikido")
-
-    # This Week in Security (weekly)
-    twis_conf = scrapers.get("this_week_in_security", {})
-    if twis_conf.get("enabled", True):
-        interval = twis_conf.get("check_interval_hours", 168)
-        if should_check_scraper(db_conn, "this_week_in_security", interval):
-            items = twis_scraper.collect(twis_conf)
-            all_items.extend(items)
-            update_scraper_run(db_conn, "this_week_in_security")
+    for name, module, default_interval in _SCRAPER_REGISTRY:
+        try:
+            all_items.extend(_run_scraper(db_conn, scrapers, name, module, default_interval))
+        except Exception as e:
+            logging.getLogger("cyberbriefing").warning("Scraper %s failed: %s", name, e)
 
     # --- Filter to unseen items only ---
 
@@ -174,6 +144,10 @@ def run_pipeline(
     logger = logging.getLogger("cyberbriefing")
     db_conn = get_connection()
 
+    # --- Periodic DB maintenance (auto-prunes items >180 days old that were
+    #     never included in a briefing; runs at most once a month) ---
+    _maybe_prune(db_conn)
+
     # --- Stage 1: Gather ---
     logger.info("=" * 50)
     logger.info("Stage 1: Gathering from all sources")
@@ -187,7 +161,6 @@ def run_pipeline(
             print(f"  [{item['source']}] {item['title']}")
         if len(new_items) > 20:
             print(f"  ... and {len(new_items) - 20} more")
-        # Mark all as seen
         mark_seen_batch(db_conn, new_items, included=False)
         return True
 
@@ -201,8 +174,6 @@ def run_pipeline(
     scoring_config = config.get("scoring", {})
     max_score_input = scoring_config.get("max_score_input", 150)
 
-    # Sort by recency (newest first) and cap before sending to Claude.
-    # Handles first-run floods (e.g. full CISA KEV catalogue) gracefully.
     items_to_score = sorted(
         new_items,
         key=lambda x: x.get("published") or "",
@@ -225,7 +196,6 @@ def run_pipeline(
         mark_seen_batch(db_conn, new_items, included=False)
         return True
 
-    # Cluster related stories
     clustered = cluster_items(scored_items, new_items)
 
     # --- Stage 3: Deliver ---
@@ -251,7 +221,6 @@ def run_pipeline(
             logger.error("Unknown delivery method: %s", delivery_method)
             success = False
 
-    # Mark items as seen — track which ones were included in the briefing
     included_ids = {item.get("id") for item in scored_items}
     included, excluded = [], []
     for item in new_items:
@@ -265,6 +234,18 @@ def run_pipeline(
         logger.error("Briefing delivery failed")
 
     return success
+
+
+def _maybe_prune(db_conn) -> None:
+    """Auto-prune old unseen items at most once per month."""
+    logger = logging.getLogger("cyberbriefing")
+    # Re-use the scraper_runs table to track when we last pruned
+    if not should_check_scraper(db_conn, "_db_prune", interval_hours=24 * 30):
+        return
+    removed = prune_old_unseen(db_conn, days=180)
+    if removed:
+        logger.info("DB maintenance: pruned %d old unseen items", removed)
+    update_scraper_run(db_conn, "_db_prune")
 
 
 def show_stats() -> None:
@@ -300,6 +281,11 @@ def main():
         help="Show database statistics",
     )
     parser.add_argument(
+        "--clear-source",
+        metavar="SOURCE",
+        help="Clear all seen-state for a source (e.g. tldr_infosec) so it re-gathers next run",
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable debug logging",
@@ -310,6 +296,12 @@ def main():
 
     if args.stats:
         show_stats()
+        return
+
+    if args.clear_source:
+        db_conn = get_connection()
+        removed = clear_source(db_conn, args.clear_source)
+        print(f"Cleared {removed} seen items for source '{args.clear_source}'")
         return
 
     config = load_config()

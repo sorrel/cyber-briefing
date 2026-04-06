@@ -9,13 +9,12 @@ Publishes Monday–Friday. Run daily — the state DB handles dedup.
 
 import logging
 import re
-from urllib.parse import urlparse, urlunparse
 
 import feedparser
 import requests
 from bs4 import BeautifulSoup
 
-from .base import make_item, truncate
+from .base import make_item, strip_utm, truncate
 
 logger = logging.getLogger("cyberbriefing.collectors.tldr_scraper")
 
@@ -111,7 +110,7 @@ def _parse_issue(html: str) -> list[dict]:
             if "(Sponsor)" in raw_title:
                 continue
 
-            url = _strip_utm(raw_url)
+            url = strip_utm(raw_url)
             if url in seen_urls:
                 continue
             seen_urls.add(url)
@@ -137,10 +136,3 @@ def _parse_issue(html: str) -> list[dict]:
     return items
 
 
-def _strip_utm(url: str) -> str:
-    """Remove UTM tracking parameters from a URL."""
-    parsed = urlparse(url)
-    if parsed.query:
-        clean = "&".join(p for p in parsed.query.split("&") if not p.startswith("utm_"))
-        return urlunparse(parsed._replace(query=clean))
-    return url

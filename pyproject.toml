@@ -14,3 +14,8 @@ dependencies = [
 
 [project.scripts]
 cyberbriefing = "briefing:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

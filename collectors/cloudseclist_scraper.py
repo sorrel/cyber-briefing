@@ -12,12 +12,12 @@ import json
 import logging
 import re
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
-from .base import make_item, truncate
+from .base import USER_AGENT_BROWSER, make_item, strip_utm, truncate
 
 logger = logging.getLogger("cyberbriefing.collectors.cloudseclist")
 
@@ -28,13 +28,7 @@ STATE_FILE = Path.home() / ".cyberbriefing" / "cloudseclist_state.json"
 # the first run.
 STARTING_ISSUE = 331
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    )
-}
+HEADERS = {"User-Agent": USER_AGENT_BROWSER}
 
 # Map CloudSecList section headings to the briefing's category taxonomy
 SECTION_CATEGORIES = {
@@ -152,7 +146,7 @@ def _parse_issue(html: str, issue_n: int) -> list[dict]:
         if "cloudseclist.com" in urlparse(raw_url).netloc:
             continue
 
-        url = _strip_utm(raw_url)
+        url = strip_utm(raw_url)
         if url in seen_urls:
             continue
         seen_urls.add(url)
@@ -185,12 +179,3 @@ def _extract_date(html: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _strip_utm(url: str) -> str:
-    """Remove UTM tracking parameters from a URL."""
-    parsed = urlparse(url)
-    if parsed.query:
-        clean = "&".join(
-            p for p in parsed.query.split("&") if not p.startswith("utm_")
-        )
-        return urlunparse(parsed._replace(query=clean))
-    return url

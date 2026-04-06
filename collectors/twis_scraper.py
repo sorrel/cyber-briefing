@@ -7,16 +7,13 @@ ingesting the whole weekly edition as a single blob.
 Published weekly on Sundays. Run interval-gated at 168h.
 """
 
-import hashlib
 import logging
 import re
-from time import mktime
-from datetime import datetime, timezone
 
 import feedparser
 from bs4 import BeautifulSoup
 
-from .base import make_item, truncate
+from .base import make_item, parse_feedparser_date, truncate
 
 logger = logging.getLogger("cyberbriefing.collectors.twis_scraper")
 
@@ -50,7 +47,7 @@ def collect(config: dict | None = None) -> list[dict]:
     # Parse up to 2 most recent editions (catches first-run and any missed weeks)
     for entry in feed.entries[:2]:
         edition_url = entry.get("link", "")
-        published = _parse_date(entry)
+        published = parse_feedparser_date(entry)
         html = _get_content_html(entry)
         if not html:
             logger.warning("No content:encoded found for TWIS entry: %s", edition_url)
@@ -186,14 +183,3 @@ def _extract_body(p, title: str) -> str:
     return raw
 
 
-def _parse_date(entry) -> str:
-    """Extract published date from a feedparser entry as ISO-8601."""
-    for field in ("published_parsed", "updated_parsed"):
-        parsed = entry.get(field)
-        if parsed:
-            try:
-                dt = datetime.fromtimestamp(mktime(parsed), tz=timezone.utc)
-                return dt.isoformat()
-            except (ValueError, OverflowError):
-                pass
-    return datetime.now(timezone.utc).isoformat()
