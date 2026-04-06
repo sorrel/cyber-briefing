@@ -6,9 +6,9 @@ A daily cybersecurity intelligence briefing delivered to Bear Notes, tailored fo
 
 Runs a three-stage pipeline every morning at 06:00:
 
-1. **Gather** — Pulls from 17+ sources: CISA KEV, NVD, HackerOne, GitHub Advisories, NCSC, The Hacker News, PortSwigger, Krebs, BleepingComputer, ENISA, ICO, UK Parliament, AWS/Azure security blogs, and more.
+1. **Gather** — Pulls from 25+ sources: CISA KEV, NVD, HackerOne, GitHub Advisories, NCSC, The Hacker News, PortSwigger, Krebs on Security, BleepingComputer, ENISA, ICO, UK Parliament, AWS Security, Wiz, Snyk, OWASP, Risky Business, TLDR Infosec, Aikido, CloudSecList, FeistyDuck, and more.
 2. **Prioritise** — Sends items to the Claude API for scoring across four dimensions (geographic relevance, domain relevance, actionability, novelty) with weights tuned for UK-based appsec work.
-3. **Deliver** — Creates a Bear Note with 10-15 prioritised items, grouped by urgency tier, with links and short annotations.
+3. **Deliver** — Creates a Bear Note with up to 20 prioritised items, grouped by urgency tier, with links and short annotations.
 
 ## Quick start
 
@@ -16,27 +16,21 @@ Runs a three-stage pipeline every morning at 06:00:
 # 1. Move into your scripts directory
 cd /path/to/cyberbriefing
 
-# 2. Create a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Set up secrets
+# 2. Set up secrets
 cp .env.example .env
-# Edit .env with your actual API keys, or link to 1Password:
-# op run --env-file=.env -- python briefing.py
+# Edit .env with your actual API keys
 
-# 5. Test with a dry run (prints to terminal instead of Bear)
-python briefing.py --dry-run
+# 3. Test with a dry run (prints to terminal instead of Bear)
+uv run python briefing.py --dry-run
 
-# 6. Test just the gathering stage
-python briefing.py --gather-only
+# 4. Test just the gathering stage
+uv run python briefing.py --gather-only
 
-# 7. Full run (creates a Bear note)
-python briefing.py
+# 5. Full run (creates a Bear note)
+uv run python briefing.py
 ```
+
+This project uses [uv](https://github.com/astral-sh/uv) for dependency management. Run `uv sync` if you need to install dependencies explicitly.
 
 ## Scheduling with launchd
 
@@ -87,7 +81,7 @@ Edit `prioritiser/prompt.txt` to tune the AI scoring. This is where you adjust p
 | Key | Source | Required? |
 |-----|--------|-----------|
 | `ANTHROPIC_API_KEY` | console.anthropic.com | Yes |
-| `HACKERONE_API_USER` + `HACKERONE_API_TOKEN` | HackerOne Settings | Optional |
+| `HACKERONE_USERNAME` + `HACKERONE_TOKEN` | HackerOne Settings | Optional |
 | `NVD_API_KEY` | nvd.nist.gov | Optional (higher rate limits) |
 | `GITHUB_TOKEN` | GitHub Settings | Optional (for advisories) |
 
@@ -95,4 +89,4 @@ The tool degrades gracefully. If a key is missing, that source is skipped and lo
 
 ## Estimated costs
 
-With Sonnet scoring ~50-100 items daily: roughly 2-4 GBP per month in API usage.
+With Claude Sonnet scoring ~50–100 items daily: roughly 2–4 GBP per month in API usage.

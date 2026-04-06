@@ -8,7 +8,7 @@ scoring:
     actionability: 1.2
     novelty: 0.8
   threshold: 10.0       # Minimum composite score for inclusion
-  max_items: 15          # Maximum items in the briefing
+  max_items: 20          # Maximum items in the briefing
   max_score_input: 150   # Cap items sent to Claude (sorted by recency first)
   model: "claude-sonnet-4-20250514"
 
