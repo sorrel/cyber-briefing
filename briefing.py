@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 from collectors import rss, cisa_kev, nvd, hackerone, github_advisories
-from collectors import enisa_scraper, ico_scraper, tldr_scraper
+from collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper
 from db.state import (
     get_connection,
     filter_unseen,
@@ -120,6 +120,24 @@ def gather_all(config: dict, db_conn) -> list[dict]:
             items = tldr_scraper.collect(tldr_conf)
             all_items.extend(items)
             update_scraper_run(db_conn, "tldr_infosec")
+
+    # CloudSecList (weekly)
+    csl_conf = scrapers.get("cloudseclist", {})
+    if csl_conf.get("enabled", True):
+        interval = csl_conf.get("check_interval_hours", 24)
+        if should_check_scraper(db_conn, "cloudseclist", interval):
+            items = cloudseclist_scraper.collect(csl_conf)
+            all_items.extend(items)
+            update_scraper_run(db_conn, "cloudseclist")
+
+    # Aikido Security blog (daily)
+    aikido_conf = scrapers.get("aikido", {})
+    if aikido_conf.get("enabled", True):
+        interval = aikido_conf.get("check_interval_hours", 23)
+        if should_check_scraper(db_conn, "aikido", interval):
+            items = aikido_scraper.collect(aikido_conf)
+            all_items.extend(items)
+            update_scraper_run(db_conn, "aikido")
 
     # --- Filter to unseen items only ---
 

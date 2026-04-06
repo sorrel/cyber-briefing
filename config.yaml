@@ -136,6 +136,18 @@ sources:
       category: news
       source_name: "The Register"
 
+    wiz_blog:
+      url: "https://www.wiz.io/feed/rss.xml"
+      category: research
+      source_name: "Wiz Blog"
+      max_entries: 30
+
+    snyk_blog:
+      url: "https://snyk.io/blog/feed/"
+      category: research
+      source_name: "Snyk Blog"
+      max_entries: 30
+
   # Tier 3: Scrapers (less frequent, more fragile)
   scrapers:
     enisa:
@@ -163,3 +175,13 @@ sources:
       enabled: true
       source_name: "TLDR Infosec"
       check_interval_hours: 23   # daily, Mon–Fri
+
+    cloudseclist:
+      enabled: true
+      source_name: "CloudSecList"
+      check_interval_hours: 24   # checks daily; issue number tracking handles weekly dedup
+
+    aikido:
+      enabled: true
+      source_name: "Aikido Security Blog"
+      check_interval_hours: 23   # daily

@@ -31,6 +31,7 @@ def collect(feed_config: dict) -> list[dict]:
     source_name = feed_config.get("source_name", url)
     category = feed_config.get("category", "advisory")
     keywords = feed_config.get("keyword_filter")
+    max_entries = feed_config.get("max_entries")  # optional cap on number of entries
 
     logger.info("Fetching RSS: %s (%s)", source_name, url)
 
@@ -44,8 +45,12 @@ def collect(feed_config: dict) -> list[dict]:
         logger.warning("Feed %s returned bozo with no entries: %s", url, feed.bozo_exception)
         return []
 
+    entries = feed.entries
+    if max_entries:
+        entries = entries[:max_entries]
+
     items = []
-    for entry in feed.entries:
+    for entry in entries:
         title = entry.get("title", "").strip()
         link = entry.get("link", "").strip()
 
