@@ -191,3 +191,14 @@ sources:
       enabled: true
       source_name: "This Week in Security"
       check_interval_hours: 168  # weekly (Sunday editions)
+
+  # ---------------------------------------------------------------------------
+  # PENDING SOURCES — not yet added, awaiting RSS access
+  # ---------------------------------------------------------------------------
+  # Ollie Whitehouse (NCSC CTO) — "CTO at NCSC: Cyber Defence Analysis"
+  #   https://substack.com/@ollieatncsc
+  #   Weekly technical newsletter. Trusted source, high signal for blue/purple teams.
+  #   BLOCKED: Substack's new @username profile format has disabled RSS on this
+  #   publication (ollieatncsc.substack.com/feed redirects to HTML). Check again
+  #   periodically — Substack has historically restored RSS access.
+  #   When it works: add under rss_feeds with category: research, source_name: "NCSC CTO"
