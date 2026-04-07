@@ -7,13 +7,12 @@
 
     <key>ProgramArguments</key>
     <array>
-        <!-- Replace /path/to/cyberbriefing with your actual project path -->
-        <string>/path/to/cyberbriefing/.venv/bin/python</string>
-        <string>/path/to/cyberbriefing/briefing.py</string>
+        <string>/bin/bash</string>
+        <string>/Users/duncan/Documents/Program/scripts/cyberbriefing/run_briefing.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/path/to/cyberbriefing</string>
+    <string>/Users/duncan/Documents/Program/scripts/cyberbriefing</string>
 
     <key>StartCalendarInterval</key>
     <dict>
