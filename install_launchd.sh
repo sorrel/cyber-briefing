@@ -3,14 +3,15 @@
 
 set -e
 
-PLIST_SRC="$HOME/Documents/Program/scripts/cyberbriefing/com.cyberbriefing.daily.plist"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PLIST_SRC="$SCRIPT_DIR/com.cyberbriefing.daily.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/com.cyberbriefing.daily.plist"
-PYTHON="$HOME/Documents/Program/scripts/cyberbriefing/.venv/bin/python"
-SCRIPT="$HOME/Documents/Program/scripts/cyberbriefing/briefing.py"
+PYTHON="$SCRIPT_DIR/.venv/bin/python"
+SCRIPT="$SCRIPT_DIR/briefing.py"
 
-echo "=== Step 1: Copying plist to LaunchAgents ==="
-cp "$PLIST_SRC" "$PLIST_DST"
-echo "Copied to $PLIST_DST"
+echo "=== Step 1: Installing plist to LaunchAgents ==="
+sed "s|__PROJECT_DIR__|$SCRIPT_DIR|g" "$PLIST_SRC" > "$PLIST_DST"
+echo "Installed to $PLIST_DST (paths set to $SCRIPT_DIR)"
 
 echo ""
 echo "=== Step 2: Loading with launchctl ==="

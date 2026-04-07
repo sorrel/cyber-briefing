@@ -52,7 +52,7 @@ python briefing.py --dry-run
 - `pyproject.toml` — For uv/pip
 - `requirements.txt` — Fallback for pip
 - `.env.example` — Template for secrets
-- `com.cyberbriefing.daily.plist` — launchd scheduler (paths pre-set to Duncan's machine)
+- `com.cyberbriefing.daily.plist` — launchd scheduler template (run `install_launchd.sh` to install with correct paths)
 
 ## Known issues / remaining work
 

@@ -8,11 +8,11 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/duncan/Documents/Program/scripts/cyberbriefing/run_briefing.sh</string>
+        <string>__PROJECT_DIR__/run_briefing.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/duncan/Documents/Program/scripts/cyberbriefing</string>
+    <string>__PROJECT_DIR__</string>
 
     <key>StartCalendarInterval</key>
     <dict>
