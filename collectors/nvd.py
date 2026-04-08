@@ -38,10 +38,13 @@ def collect(config: dict | None = None) -> list[dict]:
     if api_key:
         headers["apiKey"] = api_key
 
+    # Single unfiltered request — we apply min_cvss locally in _parse_cve.
+    # This may miss some HIGH/CRITICAL CVEs when NVD volume is high, but
+    # genuinely important vulnerabilities will surface via news RSS feeds
+    # (BleepingComputer, Krebs, NCSC, etc.) so completeness isn't critical.
     params = {
         "pubStartDate": start,
         "pubEndDate": end,
-        "cvssV3Severity": "HIGH",  # HIGH and CRITICAL
         "resultsPerPage": 100,
     }
 
@@ -55,30 +58,10 @@ def collect(config: dict | None = None) -> list[dict]:
         logger.error("Failed to fetch NVD: %s", e)
         return []
 
-    # Also fetch CRITICAL severity
-    params_crit = {**params, "cvssV3Severity": "CRITICAL"}
-    try:
-        resp_crit = requests.get(
-            NVD_API_URL, params=params_crit, headers=headers, timeout=60
-        )
-        resp_crit.raise_for_status()
-        data_crit = resp_crit.json()
-    except Exception as e:
-        logger.warning("Failed to fetch CRITICAL NVD CVEs: %s", e)
-        data_crit = {"vulnerabilities": []}
-
-    # Merge and deduplicate
-    seen_ids = set()
-    all_vulns = []
-    for vuln_wrapper in (
-        data.get("vulnerabilities", []) + data_crit.get("vulnerabilities", [])
-    ):
-        cve = vuln_wrapper.get("cve", {})
-        cve_id = cve.get("id", "")
-        if cve_id in seen_ids:
-            continue
-        seen_ids.add(cve_id)
-        all_vulns.append(cve)
+    all_vulns = [
+        vuln_wrapper.get("cve", {})
+        for vuln_wrapper in data.get("vulnerabilities", [])
+    ]
 
     items = []
     for cve in all_vulns:

@@ -12,6 +12,7 @@ Usage:
 import argparse
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -101,13 +102,26 @@ def gather_all(config: dict, db_conn) -> list[dict]:
     if config.get("sources", {}).get("github_advisories", {}).get("enabled", True):
         all_items.extend(github_advisories.collect())
 
-    # --- Tier 2: RSS Feeds ---
+    # --- Tier 2: RSS Feeds (fetched in parallel) ---
 
-    for feed_name, feed_config in config.get("sources", {}).get("rss_feeds", {}).items():
+    rss_feeds = config.get("sources", {}).get("rss_feeds", {})
+    rss_logger = logging.getLogger("cyberbriefing")
+
+    def _fetch_feed(feed_name_and_config):
+        feed_name, feed_config = feed_name_and_config
         try:
-            all_items.extend(rss.collect(feed_config))
+            return rss.collect(feed_config)
         except Exception as e:
-            logging.getLogger("cyberbriefing").warning("RSS feed %s failed: %s", feed_name, e)
+            rss_logger.warning("RSS feed %s failed: %s", feed_name, e)
+            return []
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {
+            executor.submit(_fetch_feed, item): item[0]
+            for item in rss_feeds.items()
+        }
+        for future in as_completed(futures):
+            all_items.extend(future.result())
 
     # --- Tier 3: Scrapers (interval-gated) ---
 
