@@ -10,9 +10,11 @@ LOG_PREFIX="[cyberbriefing-wrapper]"
 
 echo "$LOG_PREFIX Checking network availability..."
 
-# Wait up to 60 seconds for network (probe with a fast DNS lookup)
+# Wait up to 60 seconds for network.
+# Use curl to test a real HTTPS connection — DNS alone can succeed
+# before TCP sockets are ready, causing [Errno 9] EBADF in Python.
 for i in $(seq 1 12); do
-    if /usr/bin/host -W 3 www.google.com > /dev/null 2>&1; then
+    if /usr/bin/curl -sf --connect-timeout 5 --max-time 8 https://www.google.com > /dev/null 2>&1; then
         echo "$LOG_PREFIX Network is up (attempt $i). Starting briefing."
         break
     fi
