@@ -8,6 +8,12 @@ PLIST_SRC="$SCRIPT_DIR/com.cyberbriefing.daily.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/com.cyberbriefing.daily.plist"
 UV="/opt/homebrew/bin/uv"
 
+echo "=== Step 0: Ensuring scripts are executable ==="
+chmod +x "$SCRIPT_DIR/run_briefing.sh"
+chmod +x "$SCRIPT_DIR/install_launchd.sh"
+echo "Done."
+
+echo ""
 echo "=== Step 1: Installing plist to LaunchAgents ==="
 sed "s|__PROJECT_DIR__|$SCRIPT_DIR|g" "$PLIST_SRC" > "$PLIST_DST"
 echo "Installed to $PLIST_DST (paths set to $SCRIPT_DIR)"
