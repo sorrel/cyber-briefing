@@ -31,7 +31,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/duncan/.local/bin:/Users/duncan/.cargo/bin</string>
     </dict>
 </dict>
 </plist>

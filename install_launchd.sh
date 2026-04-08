@@ -22,8 +22,8 @@ echo "=== Step 3: Verifying it loaded ==="
 launchctl list | grep cyberbriefing && echo "✓ Agent is registered." || echo "✗ Not found in launchctl list — check for errors above."
 
 echo ""
-echo "=== Step 4: Full run (creates Bear note) ==="
-cd "$SCRIPT_DIR" && "$UV" run python briefing.py
+echo "=== Step 4: Dry-run test (stdout only, no Bear note) ==="
+cd "$SCRIPT_DIR" && "$UV" run python briefing.py --dry-run
 
 echo ""
 echo "=== Step 5: Checking launchctl status and recent logs ==="

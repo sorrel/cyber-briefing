@@ -116,6 +116,33 @@ sources:
       category: research
       source_name: "OWASP"
 
+    # OWASP project releases come from GitHub — the owasp.org feed above is
+    # only the foundation blog (staffing, events). These fire on actual releases:
+    owasp_top10_releases:
+      url: "https://github.com/OWASP/Top10/releases.atom"
+      category: research
+      source_name: "OWASP Top 10"
+
+    owasp_api_security_releases:
+      url: "https://github.com/OWASP/API-Security/releases.atom"
+      category: research
+      source_name: "OWASP API Security"
+
+    owasp_llm_top10_releases:
+      url: "https://github.com/OWASP/www-project-top-10-for-large-language-model-applications/releases.atom"
+      category: research
+      source_name: "OWASP LLM Top 10"
+
+    owasp_asvs_releases:
+      url: "https://github.com/OWASP/ASVS/releases.atom"
+      category: research
+      source_name: "OWASP ASVS"
+
+    owasp_cheatsheets_releases:
+      url: "https://github.com/OWASP/CheatSheetSeries/releases.atom"
+      category: research
+      source_name: "OWASP Cheat Sheets"
+
     aws_security:
       url: "https://aws.amazon.com/blogs/security/feed/"
       category: vendor
@@ -149,7 +176,7 @@ sources:
       max_entries: 30
 
     tldrsec:
-      url: "https://tldrsec.com/feed"
+      url: "https://tldrsec.com/feed.xml"  # /feed is CF-protected; feed.xml proxies Beehiiv directly
       category: research
       source_name: "tl;dr sec"
 
@@ -157,11 +184,6 @@ sources:
       url: "https://blog.trailofbits.com/feed/"
       category: research
       source_name: "Trail of Bits"
-
-    ncc_group_research:
-      url: "https://research.nccgroup.com/feed/"
-      category: research
-      source_name: "NCC Group Research"
 
     google_project_zero:
       url: "https://googleprojectzero.blogspot.com/feeds/posts/default"
@@ -223,6 +245,13 @@ sources:
   #   publication (ollieatncsc.substack.com/feed redirects to HTML). Check again
   #   periodically — Substack has historically restored RSS access.
   #   When it works: add under rss_feeds with category: research, source_name: "NCSC CTO"
+  #
+  # Anthropic Security Blog / News
+  #   No RSS feed exists as of April 2026 — all standard feed URLs return 404.
+  #   Anthropic model releases and safety research will surface via secondary
+  #   sources already in config (The Hacker News, BleepingComputer, The Register).
+  #   Check https://www.anthropic.com/news periodically for a feed.
+  #   Alternative: add as a scraper target if secondary coverage proves insufficient.
   #
   # Anthropic Security Blog
   #   https://www.anthropic.com/blog/rss (verify URL — may need checking)
