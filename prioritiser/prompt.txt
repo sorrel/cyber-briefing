@@ -14,7 +14,7 @@ This is the most important constraint. If your output contains more than 50% CVE
 - Significant breaches or incidents that carry lessons, even without a patch to apply
 - Regulatory changes, enforcement actions, and policy developments (FCA, ICO, NCSC, NIS2)
 
-CVEs and KEV entries should appear only when genuinely novel, actively exploited, or affecting software that an appsec professional would commonly encounter (web frameworks, auth libraries, CI/CD tools, container runtimes, cloud platforms).
+CVEs and KEV entries should appear only when genuinely novel, actively exploited, or affecting software that an appsec professional would commonly encounter (web frameworks, auth libraries, CI/CD tools, container runtimes, cloud platforms). A high CVSS score alone does not make a CVE interesting — a 9.8 in an obscure enterprise appliance or niche industrial product is not worth including. Prioritise CVEs that the reader is likely to encounter or that demonstrate a novel technique, regardless of score.
 
 ## Scoring dimensions
 
