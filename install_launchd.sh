@@ -6,8 +6,7 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PLIST_SRC="$SCRIPT_DIR/com.cyberbriefing.daily.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/com.cyberbriefing.daily.plist"
-PYTHON="$SCRIPT_DIR/.venv/bin/python"
-SCRIPT="$SCRIPT_DIR/briefing.py"
+UV="/opt/homebrew/bin/uv"
 
 echo "=== Step 1: Installing plist to LaunchAgents ==="
 sed "s|__PROJECT_DIR__|$SCRIPT_DIR|g" "$PLIST_SRC" > "$PLIST_DST"
@@ -24,7 +23,7 @@ launchctl list | grep cyberbriefing && echo "✓ Agent is registered." || echo "
 
 echo ""
 echo "=== Step 4: Full run (creates Bear note) ==="
-"$PYTHON" "$SCRIPT"
+cd "$SCRIPT_DIR" && "$UV" run python briefing.py
 
 echo ""
 echo "=== Step 5: Checking launchctl status and recent logs ==="

@@ -261,29 +261,74 @@ def show_stats() -> None:
         print(f"  {source:25s} {count:5d}")
 
 
+# ---------------------------------------------------------------------------
+# Coloured help formatter
+# ---------------------------------------------------------------------------
+
+class _ColouredHelp(argparse.HelpFormatter):
+    """argparse formatter that adds ANSI colour to --help output."""
+
+    # ANSI codes
+    BOLD    = "\033[1m"
+    CYAN    = "\033[36m"
+    YELLOW  = "\033[33m"
+    GREEN   = "\033[32m"
+    DIM     = "\033[2m"
+    RESET   = "\033[0m"
+
+    def start_section(self, heading):
+        heading = f"{self.YELLOW}{self.BOLD}{heading}{self.RESET}" if heading else heading
+        super().start_section(heading)
+
+    def _format_action_invocation(self, action):
+        text = super()._format_action_invocation(action)
+        return f"{self.CYAN}{self.BOLD}{text}{self.RESET}"
+
+    def _format_action(self, action):
+        # Let argparse build the line, then dim the help text
+        result = super()._format_action(action)
+        # The help text follows the flag text after whitespace — dim it
+        lines = result.splitlines(keepends=True)
+        coloured = []
+        for i, line in enumerate(lines):
+            if i == 0:
+                coloured.append(line)
+            else:
+                coloured.append(f"{self.DIM}{line}{self.RESET}")
+        return "".join(coloured)
+
+    def _format_usage(self, usage, actions, groups, prefix):
+        result = super()._format_usage(usage, actions, groups, prefix)
+        return result.replace("usage:", f"{self.BOLD}usage:{self.RESET}")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Cyber Briefing Tool — Daily cybersecurity intelligence briefing"
+        description=(
+            "\033[1m\033[32mCyber Briefing Tool\033[0m"
+            " — daily cybersecurity intelligence, scored and delivered to Bear"
+        ),
+        formatter_class=_ColouredHelp,
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Run the full pipeline but print to stdout instead of Bear",
+        help="Full pipeline but print to stdout instead of Bear — no state changes",
     )
     parser.add_argument(
         "--gather-only",
         action="store_true",
-        help="Only gather items and show counts (no scoring or delivery)",
+        help="Collect from all sources, show counts, mark seen — no scoring or delivery",
     )
     parser.add_argument(
         "--stats",
         action="store_true",
-        help="Show database statistics",
+        help="Show database statistics by source",
     )
     parser.add_argument(
         "--clear-source",
         metavar="SOURCE",
-        help="Clear all seen-state for a source (e.g. tldr_infosec) so it re-gathers next run",
+        help="Reset seen-state for one source (e.g. tldrsec) so it re-gathers next run",
     )
     parser.add_argument(
         "--verbose", "-v",
