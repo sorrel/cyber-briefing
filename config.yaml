@@ -148,6 +148,26 @@ sources:
       source_name: "Snyk Blog"
       max_entries: 30
 
+    tldrsec:
+      url: "https://tldrsec.com/feed"
+      category: research
+      source_name: "tl;dr sec"
+
+    trail_of_bits:
+      url: "https://blog.trailofbits.com/feed/"
+      category: research
+      source_name: "Trail of Bits"
+
+    ncc_group_research:
+      url: "https://research.nccgroup.com/feed/"
+      category: research
+      source_name: "NCC Group Research"
+
+    google_project_zero:
+      url: "https://googleprojectzero.blogspot.com/feeds/posts/default"
+      category: research
+      source_name: "Google Project Zero"
+
 
   # Tier 3: Scrapers (less frequent, more fragile)
   scrapers:
@@ -193,8 +213,9 @@ sources:
       check_interval_hours: 168  # weekly (Sunday editions)
 
   # ---------------------------------------------------------------------------
-  # PENDING SOURCES — not yet added, awaiting RSS access
+  # PENDING SOURCES — not yet added, awaiting RSS access or verification
   # ---------------------------------------------------------------------------
+  #
   # Ollie Whitehouse (NCSC CTO) — "CTO at NCSC: Cyber Defence Analysis"
   #   https://substack.com/@ollieatncsc
   #   Weekly technical newsletter. Trusted source, high signal for blue/purple teams.
@@ -202,3 +223,40 @@ sources:
   #   publication (ollieatncsc.substack.com/feed redirects to HTML). Check again
   #   periodically — Substack has historically restored RSS access.
   #   When it works: add under rss_feeds with category: research, source_name: "NCSC CTO"
+  #
+  # Anthropic Security Blog
+  #   https://www.anthropic.com/blog/rss (verify URL — may need checking)
+  #   Publishes responsible disclosure, model card updates, safety research.
+  #   High relevance for AI/security intersection coverage.
+  #
+  # OpenAI Security Blog
+  #   RSS URL uncertain — check https://openai.com/security
+  #   Publishes CVEs against OpenAI platform, security research, incident reports.
+  #
+  # Google Cloud Security Blog
+  #   https://cloud.google.com/blog/products/identity-security/rss
+  #   GCP-specific advisories and research. Good counterpart to existing AWS Security feed.
+  #
+  # Microsoft Security Blog
+  #   https://www.microsoft.com/en-us/security/blog/feed/
+  #   Azure/M365 vulns, MSTIC threat intelligence. High volume — may need filtering.
+  #
+  # NIST Cybersecurity Insights
+  #   https://www.nist.gov/blogs/cybersecurity-insights/rss.xml
+  #   SP 800-series drafts, CSF/RMF framework updates. Low volume, high importance.
+  #
+  # NCSC Weekly Threat Report (distinct from existing NCSC feeds)
+  #   https://www.ncsc.gov.uk/api/1/services/v1/weekly-threat-report-rss-feed.xml
+  #   A specific NCSC product, worth adding alongside the existing all/reports feeds.
+  #
+  # Recorded Future Blog
+  #   https://www.recordedfuture.com/blog/feed — verify URL
+  #   Threat intelligence reports. Commercial but frequently publish open research.
+  #
+  # Mandiant / Google Threat Intelligence
+  #   https://www.mandiant.com/resources/blog/rss.xml — verify URL
+  #   High-quality APT and threat actor research.
+  #
+  # Didier Stevens Blog
+  #   https://blog.didierstevens.com/feed/
+  #   Deep malware/forensics analysis. Niche but genuinely novel technique posts.

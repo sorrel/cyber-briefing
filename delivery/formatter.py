@@ -166,6 +166,10 @@ def _pretty_source(slug: str) -> str:
         "cloudseclist": "CloudSecList",
         "wiz_blog": "Wiz Blog",
         "snyk_blog": "Snyk Blog",
+        "tldrsec": "tl;dr sec",
+        "trail_of_bits": "Trail of Bits",
+        "ncc_group_research": "NCC Group Research",
+        "google_project_zero": "Google Project Zero",
         "aikido": "Aikido Security",
         "this_week_in_security": "This Week in Security",
     }
