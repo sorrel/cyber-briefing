@@ -251,9 +251,14 @@ sources:
   #   Anthropic model releases and safety research will surface via secondary
   #   sources already in config (The Hacker News, BleepingComputer, The Register).
   #   Check https://www.anthropic.com/news periodically for a feed.
-  #   Alternative: add as a scraper target if secondary coverage proves insufficient.
-  #
-  # Anthropic Security Blog
+    anthropic_red:
+      enabled: true
+      url: "https://red.anthropic.com/"
+      category: research
+      source_name: "Anthropic Red Team"
+      check_interval_hours: 24
+
+  # Anthropic main blog
   #   https://www.anthropic.com/blog/rss (verify URL — may need checking)
   #   Publishes responsible disclosure, model card updates, safety research.
   #   High relevance for AI/security intersection coverage.

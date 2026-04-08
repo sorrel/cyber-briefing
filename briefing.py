@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 from collectors import rss, cisa_kev, nvd, hackerone, github_advisories
-from collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper, twis_scraper
+from collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper, twis_scraper, anthropic_red_scraper
 from db.state import (
     get_connection,
     filter_unseen,
@@ -68,6 +68,7 @@ _SCRAPER_REGISTRY = [
     ("cloudseclist",           cloudseclist_scraper,  24),
     ("aikido",                 aikido_scraper,        23),
     ("this_week_in_security",  twis_scraper,         168),
+    ("anthropic_red",          anthropic_red_scraper, 24),
 ]
 
 
