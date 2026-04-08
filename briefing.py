@@ -266,36 +266,54 @@ def show_stats() -> None:
 # ---------------------------------------------------------------------------
 
 class _ColouredHelp(argparse.HelpFormatter):
-    """argparse formatter that adds ANSI colour to --help output."""
+    """argparse formatter with ANSI colour and consistent two-column alignment.
 
-    # ANSI codes
-    BOLD    = "\033[1m"
-    CYAN    = "\033[36m"
-    YELLOW  = "\033[33m"
-    GREEN   = "\033[32m"
-    DIM     = "\033[2m"
-    RESET   = "\033[0m"
+    argparse calculates column widths from raw string lengths, which breaks when
+    ANSI escape codes are present (they are invisible but counted as characters).
+    We sidestep this by: (a) setting a fixed help_position so alignment is never
+    computed from coloured strings, and (b) building each action line manually
+    so the flag and help text are always in the right columns.
+    """
+
+    BOLD   = "\033[1m"
+    CYAN   = "\033[36m"
+    YELLOW = "\033[33m"
+    GREEN  = "\033[32m"
+    DIM    = "\033[2m"
+    RESET  = "\033[0m"
+
+    # Fixed indent for the help column — wide enough for --clear-source SOURCE
+    HELP_COL = 28
+
+    def __init__(self, prog):
+        super().__init__(prog, max_help_position=self.HELP_COL, width=100)
 
     def start_section(self, heading):
         heading = f"{self.YELLOW}{self.BOLD}{heading}{self.RESET}" if heading else heading
         super().start_section(heading)
 
     def _format_action_invocation(self, action):
-        text = super()._format_action_invocation(action)
-        return f"{self.CYAN}{self.BOLD}{text}{self.RESET}"
+        """Return the plain (uncoloured) flag text — used for width calculation."""
+        return super()._format_action_invocation(action)
 
     def _format_action(self, action):
-        # Let argparse build the line, then dim the help text
-        result = super()._format_action(action)
-        # The help text follows the flag text after whitespace — dim it
-        lines = result.splitlines(keepends=True)
-        coloured = []
-        for i, line in enumerate(lines):
-            if i == 0:
-                coloured.append(line)
-            else:
-                coloured.append(f"{self.DIM}{line}{self.RESET}")
-        return "".join(coloured)
+        """Render one action line with consistent column alignment."""
+        # Plain flag text (no colour) so len() is accurate for padding
+        flag_plain = self._format_action_invocation(action)
+        flag_coloured = f"{self.CYAN}{self.BOLD}{flag_plain}{self.RESET}"
+
+        help_text = self._expand_help(action) if action.help else ""
+        help_coloured = f"{self.DIM}{help_text}{self.RESET}" if help_text else ""
+
+        indent = "  "  # two-space left margin
+        gap = max(1, self.HELP_COL - len(flag_plain) - len(indent))
+
+        if help_coloured:
+            line = f"{indent}{flag_coloured}{' ' * gap}{help_coloured}"
+        else:
+            line = f"{indent}{flag_coloured}"
+
+        return line + "\n"
 
     def _format_usage(self, usage, actions, groups, prefix):
         result = super()._format_usage(usage, actions, groups, prefix)
