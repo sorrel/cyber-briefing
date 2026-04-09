@@ -208,7 +208,8 @@ def run_pipeline(
     scored_items = scored_result.get("items", [])
     if not scored_items:
         logger.warning("Scoring returned no items above threshold")
-        mark_seen_batch(db_conn, new_items, included=False)
+        if not dry_run:
+            mark_seen_batch(db_conn, new_items, included=False)
         return True
 
     clustered = cluster_items(scored_items, new_items)
@@ -218,10 +219,7 @@ def run_pipeline(
     logger.info("Stage 3: Formatting and delivering %d items", len(clustered))
     logger.info("=" * 50)
 
-    briefing_date = scored_result.get(
-        "briefing_date",
-        datetime.now(timezone.utc).strftime("%d %B %Y"),
-    )
+    briefing_date = datetime.now().strftime("%d %B %Y")
     title, body, tags = format_briefing(clustered, new_items, briefing_date)
 
     if dry_run:
@@ -236,12 +234,13 @@ def run_pipeline(
             logger.error("Unknown delivery method: %s", delivery_method)
             success = False
 
-    included_ids = {item.get("id") for item in scored_items}
-    included, excluded = [], []
-    for item in new_items:
-        (included if item["id"] in included_ids else excluded).append(item)
-    mark_seen_batch(db_conn, included, included=True)
-    mark_seen_batch(db_conn, excluded, included=False)
+    if not dry_run:
+        included_ids = {item.get("id") for item in scored_items}
+        included, excluded = [], []
+        for item in new_items:
+            (included if item["id"] in included_ids else excluded).append(item)
+        mark_seen_batch(db_conn, included, included=True)
+        mark_seen_batch(db_conn, excluded, included=False)
 
     if success:
         logger.info("Briefing delivered successfully: %s", title)

@@ -8,10 +8,13 @@ A Python pipeline that runs daily to produce a prioritised cybersecurity briefin
 
 ```bash
 # Always use uv
-uv run python briefing.py --dry-run     # Full pipeline → stdout
+uv run python briefing.py --dry-run     # Full pipeline → stdout (no state changes)
 uv run python briefing.py --gather-only # Collect only, mark seen, no scoring
 uv run python briefing.py --stats       # Show DB stats by source
 uv run python briefing.py               # Real run → Bear Notes
+
+# Daemon (long-running, sleeps until 06:00)
+uv run python daemon.py                 # Runs daily at 06:00, managed by launchd
 ```
 
 ## Architecture
@@ -84,16 +87,21 @@ Edit `config.yaml`:
 
 ## Scheduling
 
-launchd plist: `com.cyberbriefing.daily.plist` fires daily at 06:00.
+`daemon.py` is a long-running process that sleeps until 06:00, runs the briefing, then sleeps until the next day. Managed by launchd with `RunAtLoad` + `KeepAlive` — starts at login and restarts if it crashes. This avoids launchd TCC/network issues that affect cron-style scheduling from `~/Documents/`.
 
 ```bash
 # Install
 cp com.cyberbriefing.daily.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
+# Edit __PROJECT_DIR__ placeholder to actual path
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
+
+# Restart after changes
+launchctl bootout gui/$(id -u)/com.cyberbriefing.daily
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
 
 # Logs
-tail -f /tmp/cyberbriefing.log
-tail -f /tmp/cyberbriefing.err
+tail -f /tmp/cyberbriefing.log   # daemon status
+tail -f /tmp/cyberbriefing.err   # pipeline output
 ```
 
 ## Secrets

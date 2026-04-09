@@ -5,22 +5,25 @@
     <key>Label</key>
     <string>com.cyberbriefing.daily</string>
 
+    <!-- Long-running daemon: sleeps until 06:00, runs the briefing, repeats.
+         RunAtLoad starts it at login; KeepAlive restarts if it crashes.
+         This avoids launchd TCC/network issues with cron-style scheduling. -->
+
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
-        <string>__PROJECT_DIR__/run_briefing.sh</string>
+        <string>/opt/homebrew/bin/uv</string>
+        <string>run</string>
+        <string>--directory</string>
+        <string>__PROJECT_DIR__</string>
+        <string>python</string>
+        <string>daemon.py</string>
     </array>
 
-    <key>WorkingDirectory</key>
-    <string>__PROJECT_DIR__</string>
+    <key>RunAtLoad</key>
+    <true/>
 
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>6</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <key>KeepAlive</key>
+    <true/>
 
     <key>StandardOutPath</key>
     <string>/tmp/cyberbriefing.log</string>
@@ -31,7 +34,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/duncan/.local/bin:/Users/duncan/.cargo/bin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/duncan/.local/bin</string>
     </dict>
 </dict>
 </plist>
