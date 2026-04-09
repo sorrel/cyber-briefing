@@ -34,26 +34,28 @@ This project uses [uv](https://github.com/astral-sh/uv) for dependency managemen
 
 ## Scheduling with launchd
 
+The briefing runs as a long-running daemon (`daemon.py`) that sleeps until 06:00, runs the pipeline, then sleeps until the next day. launchd keeps it alive with `RunAtLoad` + `KeepAlive` — it starts at login and restarts automatically if it crashes.
+
 ```bash
-# Copy the plist to LaunchAgents
+# Copy the plist to LaunchAgents and edit the project path
 cp com.cyberbriefing.daily.plist ~/Library/LaunchAgents/
+# Replace __PROJECT_DIR__ with the actual path to this project
 
-# Load the schedule
-launchctl load ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
+# Install the daemon
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
 
-# Verify it is loaded
-launchctl list | grep cyberbriefing
+# Check it's running
+launchctl print gui/$(id -u)/com.cyberbriefing.daily
 
-# To run it immediately (for testing)
-launchctl start com.cyberbriefing.daily
+# Restart after changes
+launchctl bootout gui/$(id -u)/com.cyberbriefing.daily
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
 
-# To unload
-launchctl unload ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
+# To test the pipeline without the daemon
+uv run python briefing.py --dry-run
 ```
 
-The job fires at 06:00 daily. If your Mac is asleep at that time, launchd will run the job when the machine next wakes.
-
-Check logs at `/tmp/cyberbriefing.log` and `/tmp/cyberbriefing.err`.
+Check logs at `/tmp/cyberbriefing.log` (daemon status) and `/tmp/cyberbriefing.err` (pipeline output).
 
 ## Configuration
 
