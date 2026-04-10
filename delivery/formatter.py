@@ -36,7 +36,7 @@ def format_briefing(
         Tuple of (title, body_markdown, tags).
     """
     if not briefing_date:
-        briefing_date = datetime.now(timezone.utc).strftime("%d %B %Y")
+        briefing_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     title = f"Cyber Briefing — {briefing_date}"
 

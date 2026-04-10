@@ -219,7 +219,7 @@ def run_pipeline(
     logger.info("Stage 3: Formatting and delivering %d items", len(clustered))
     logger.info("=" * 50)
 
-    briefing_date = datetime.now().strftime("%d %B %Y")
+    briefing_date = datetime.now().strftime("%Y-%m-%d")
     title, body, tags = format_briefing(clustered, new_items, briefing_date)
 
     if dry_run:
