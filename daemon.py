@@ -13,7 +13,7 @@ BRIEFING_HOUR = 6
 BRIEFING_MINUTE = 0
 MAX_RETRIES = 3
 RETRY_DELAY = 30
-NETWORK_TIMEOUT = 120
+NETWORK_TIMEOUT = 3600
 
 logger = logging.getLogger("cyberbriefing.daemon")
 
