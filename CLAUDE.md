@@ -104,6 +104,25 @@ tail -f /tmp/cyberbriefing.log   # daemon status
 tail -f /tmp/cyberbriefing.err   # pipeline output
 ```
 
+## Recurring 06:00 network-failure bug (investigation notes)
+
+**Context:** Runs on a 24/7 mains-powered Mac mini. `pmset` has `sleep 0`, so the machine is always fully awake. Ruled out: router reboot (worked fine for days before it started failing), PowerNap / lid-close behaviour (not a laptop). Daemon fires at 06:00, `_wait_for_network` (daemon.py:30) polls `www.google.com:443` every 5 s for 3600 s and always fails, then skips the day.
+
+**Hypotheses to work through if it fails again (in rough order of likelihood):**
+
+1. **Stale DNS / scutil state in the long-running process.** Python's `getaddrinfo` caches resolver config at startup. If `mDNSResponder` restarts overnight (common around 04:00–05:00 on macOS), a process that's been running for days can keep trying a dead resolver. Test: add DNS-only probe (`socket.getaddrinfo("www.google.com", 443)`) with exception logging, separate from `create_connection`.
+2. **IPv6 happy-eyeballs delay.** `socket.create_connection` tries AAAA then A. If IPv6 routing is broken or a router advert expires overnight, each attempt waits its full 5 s timeout. Test: log `ai_family` of the successful/failing addrs; try forcing AF_INET.
+3. **Daemon process drift after 20+ h idle.** The daemon holds the same Python process for days. `time.sleep(wait)` for 22 h is a long blocking call; on wake, kernel-side socket state in the process may be stale. Test: after wake, call `socket.setdefaulttimeout` and do a cheap sanity check before the polling loop; or restart the daemon via `launchctl kickstart -k` after each successful run.
+4. **Process was restarted by launchd mid-run.** `KeepAlive=true` restarts on any exit. If a run crashed partway, stderr might not show it (empty stdout log supports this). Check `log show --predicate 'process == "daemon.py"'` for crash traces.
+5. **Something scheduled on the Mac mini touching the network around 06:00** — `periodic` daily scripts run ~03:15 by default but a custom one could clash; VPN reconnect (Tailscale, WireGuard) at a fixed hour; Little Snitch / LuLu rule reload. Check `launchctl list | grep -v com.apple` and any login-item daemons.
+6. **A previous day's `run_pipeline` leaked file descriptors / sockets**, and after N days the process hits a limit (`EMFILE`). Test: log `len(os.listdir(f"/proc/{pid}/fd"))` equivalent on mac (`lsof -p $PID | wc -l`) on startup and after each run.
+7. **`time.monotonic()` drift.** On Darwin, monotonic does advance during wake-time but long sleeps can interact oddly with the 3600 s deadline. Less likely given the log shows exactly 3600 s elapsed, but worth noting.
+8. **The failing poll isn't actually the network — it's something blocking before `create_connection`** (import, config load, Bear check). The log wording ("Network unavailable after 3600s") is emitted unconditionally on timeout; rule this out by adding per-attempt exception logging.
+
+**Diagnostic patch to add before the next failure** (daemon.py:36–42): log the exception type and message on each failed attempt, and log DNS resolution separately from TCP connection. That one change will tell us which of the above it is without further guessing.
+
+**Robustness fix independent of cause:** raise `NETWORK_TIMEOUT` to ~12 h or retry at 06:30 / 07:00 / 08:00 so a transient ~5 min outage never costs a day's briefing.
+
 ## Secrets
 
 Uses `.env` file (gitignored). Required keys:
