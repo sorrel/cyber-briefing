@@ -14,7 +14,7 @@
         <string>/opt/homebrew/bin/uv</string>
         <string>run</string>
         <string>--directory</string>
-        <string>__PROJECT_DIR__</string>
+        <string>/Users/duncan/Developer/scripts/cyberbriefing</string>
         <string>python</string>
         <string>daemon.py</string>
     </array>
