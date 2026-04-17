@@ -11,8 +11,8 @@ from briefing import load_config, run_pipeline, setup_logging
 
 BRIEFING_HOUR = 6
 BRIEFING_MINUTE = 0
-MAX_RETRIES = 3
-RETRY_DELAY = 30
+MAX_RETRIES = 6
+RETRY_DELAY = 300
 NETWORK_TIMEOUT = 3600
 
 logger = logging.getLogger("cyberbriefing.daemon")
