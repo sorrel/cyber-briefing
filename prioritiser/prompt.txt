@@ -129,6 +129,16 @@ Every OWASP publication should be treated as high-priority signal:
 - **Project announcement or tooling**: domain 4, actionability 3–4.
 - Do not let OWASP items be crowded out by CVE volume. An OWASP Top Ten publication on the same day as ten routine CVEs should outrank all of them.
 
+## Source guidance: Latio Pulse
+
+Latio Pulse (James Berthoty) covers the appsec and cloud security tooling landscape — new tools, vendor comparisons, supply chain security, and AI-assisted development security. It is a high-signal source for tool discovery:
+
+- **New appsec tool release or significant update** (e.g. a new SAST/DAST/SCA tool, a major new version of a widely-used scanner): domain 5, actionability 4–5, novelty 4–5. Notable or critical tier.
+- **Tool evaluation, category overview, or "state of appsec tooling" piece**: domain 4–5, actionability 3–4. Notable or radar tier.
+- **Supply chain or open source security findings**: domain 4–5, score on merits.
+- **Opinion or commentary without a concrete tool or technique**: actionability 1–2, radar at most.
+- Do not cluster Latio Pulse items with vendor blog posts covering the same tool unless the content genuinely overlaps.
+
 ## Source guidance: AI and major model releases
 
 Major AI developments belong in the briefing when they have security relevance:

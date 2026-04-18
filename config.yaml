@@ -190,6 +190,11 @@ sources:
       category: research
       source_name: "Google Project Zero"
 
+    latio_pulse:
+      url: "https://pulse.latio.tech/feed"
+      category: research
+      source_name: "Latio Pulse"
+
 
   # Tier 3: Scrapers (less frequent, more fragile)
   scrapers:
