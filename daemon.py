@@ -13,7 +13,7 @@ BRIEFING_HOUR = 6
 BRIEFING_MINUTE = 0
 MAX_RETRIES = 6
 RETRY_DELAY = 300
-NETWORK_TIMEOUT = 3600
+NETWORK_TIMEOUT = 7200
 
 logger = logging.getLogger("cyberbriefing.daemon")
 
@@ -38,7 +38,8 @@ def _wait_for_network():
             s.close()
             logger.info("Network available (attempt %d).", attempt)
             return True
-        except OSError:
+        except OSError as exc:
+            logger.debug("Network probe attempt %d failed: %s: %s", attempt, type(exc).__name__, exc)
             time.sleep(5)
     logger.error("Network unavailable after %ds — skipping today's briefing.", NETWORK_TIMEOUT)
     return False
@@ -78,14 +79,14 @@ def main():
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
-    while True:
-        wait = _seconds_until_next_run()
-        hours, remainder = divmod(int(wait), 3600)
-        minutes = remainder // 60
-        logger.info("Next briefing in %dh %dm. Sleeping until %02d:%02d.",
-                     hours, minutes, BRIEFING_HOUR, BRIEFING_MINUTE)
-        time.sleep(wait)
-        _run_briefing()
+    wait = _seconds_until_next_run()
+    hours, remainder = divmod(int(wait), 3600)
+    minutes = remainder // 60
+    logger.info("Next briefing in %dh %dm. Sleeping until %02d:%02d.",
+                 hours, minutes, BRIEFING_HOUR, BRIEFING_MINUTE)
+    time.sleep(wait)
+    _run_briefing()
+    sys.exit(0)
 
 
 if __name__ == "__main__":
