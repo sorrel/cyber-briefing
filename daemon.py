@@ -1,8 +1,10 @@
 """Cyberbriefing daemon — sleeps until 06:00, runs the briefing, repeats."""
 
 import logging
+import os
 import signal
 import socket
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -13,7 +15,11 @@ BRIEFING_HOUR = 6
 BRIEFING_MINUTE = 0
 MAX_RETRIES = 6
 RETRY_DELAY = 300
-NETWORK_TIMEOUT = 7200
+NETWORK_INITIAL_PROBE_SECS = 30   # probe window before attempting remediation
+NETWORK_POST_FLUSH_PROBE_SECS = 90  # probe window after DNS flush
+
+# Environment variable set when restarting for a fresh process state.
+_RUN_NOW_ENV = 'CYBERBRIEFING_RUN_NOW'
 
 logger = logging.getLogger("cyberbriefing.daemon")
 
@@ -27,29 +33,80 @@ def _seconds_until_next_run() -> float:
     return (target - now).total_seconds()
 
 
-def _wait_for_network():
-    """Block until we can open a TCP socket, up to NETWORK_TIMEOUT seconds."""
-    deadline = time.monotonic() + NETWORK_TIMEOUT
+def _probe_once() -> tuple[bool, str]:
+    """Single AF_INET TCP probe. Returns (success, error_description)."""
+    try:
+        addrs = socket.getaddrinfo("www.google.com", 443, socket.AF_INET, socket.SOCK_STREAM)
+        s = socket.create_connection(addrs[0][4], timeout=5)
+        s.close()
+        return True, ""
+    except OSError as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+
+
+def _probe_for(seconds: int) -> bool:
+    """Probe repeatedly for up to `seconds`. Logs every failure at INFO."""
+    deadline = time.monotonic() + seconds
     attempt = 0
     while time.monotonic() < deadline:
         attempt += 1
-        try:
-            s = socket.create_connection(("www.google.com", 443), timeout=5)
-            s.close()
+        ok, err = _probe_once()
+        if ok:
             logger.info("Network available (attempt %d).", attempt)
             return True
-        except OSError as exc:
-            logger.debug("Network probe attempt %d failed: %s: %s", attempt, type(exc).__name__, exc)
-            time.sleep(5)
-    logger.error("Network unavailable after %ds — skipping today's briefing.", NETWORK_TIMEOUT)
+        logger.info("Network probe %d failed: %s", attempt, err)
+        time.sleep(5)
     return False
 
 
-def _run_briefing():
-    """Wait for network, then run the pipeline with retries."""
-    if not _wait_for_network():
-        return
+def _flush_dns():
+    """Flush the macOS DNS cache to clear stale resolver state."""
+    subprocess.run(['dscacheutil', '-flushcache'], capture_output=True)
+    # mDNSResponder runs as root so HUP may be silently ignored — that's fine.
+    subprocess.run(['killall', '-HUP', 'mDNSResponder'], capture_output=True)
+    logger.info("DNS flush attempted (dscacheutil + mDNSResponder HUP).")
 
+
+def _restart_for_fresh_state():
+    """Replace this process with a fresh copy, skipping the sleep."""
+    logger.info("Restarting daemon process to clear stale network state.")
+    env = os.environ.copy()
+    env[_RUN_NOW_ENV] = '1'
+    os.execve(sys.executable, sys.argv, env)
+
+
+def _wait_for_network(allow_remediation: bool) -> bool:
+    """
+    Probe network, with active remediation on first failure.
+
+    - Probes for 30s.
+    - On failure: flushes DNS, waits 10s, probes for another 90s.
+    - If still failing: restarts the process entirely (fresh resolver state).
+    - allow_remediation=False (post-restart run): single 30s probe, then give up.
+    """
+    logger.info("Probing network (initial %ds window).", NETWORK_INITIAL_PROBE_SECS)
+    if _probe_for(NETWORK_INITIAL_PROBE_SECS):
+        return True
+
+    if not allow_remediation:
+        logger.error("Network still unavailable after restart — skipping today's briefing.")
+        return False
+
+    logger.warning("Network unavailable after %ds — flushing DNS cache.", NETWORK_INITIAL_PROBE_SECS)
+    _flush_dns()
+    time.sleep(10)  # give mDNSResponder time to restart
+
+    logger.info("Retrying network probe (%ds window).", NETWORK_POST_FLUSH_PROBE_SECS)
+    if _probe_for(NETWORK_POST_FLUSH_PROBE_SECS):
+        return True
+
+    # DNS flush didn't help — restart for a truly fresh process state.
+    _restart_for_fresh_state()
+    return False  # unreachable
+
+
+def _run_briefing():
+    """Run the pipeline with retries."""
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             logger.info("Briefing attempt %d/%d.", attempt, MAX_RETRIES)
@@ -69,9 +126,9 @@ def _run_briefing():
 
 def main():
     setup_logging(verbose=False)
-    logger.info("Daemon started. Briefing scheduled daily at %02d:%02d.", BRIEFING_HOUR, BRIEFING_MINUTE)
 
-    # Graceful shutdown on SIGTERM/SIGINT.
+    run_now = bool(os.environ.pop(_RUN_NOW_ENV, None))
+
     def _shutdown(signum, frame):
         logger.info("Received signal %d — shutting down.", signum)
         sys.exit(0)
@@ -79,12 +136,20 @@ def main():
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
-    wait = _seconds_until_next_run()
-    hours, remainder = divmod(int(wait), 3600)
-    minutes = remainder // 60
-    logger.info("Next briefing in %dh %dm. Sleeping until %02d:%02d.",
-                 hours, minutes, BRIEFING_HOUR, BRIEFING_MINUTE)
-    time.sleep(wait)
+    if run_now:
+        logger.info("Daemon restarted for immediate run (fresh process state).")
+    else:
+        logger.info("Daemon started. Briefing scheduled daily at %02d:%02d.", BRIEFING_HOUR, BRIEFING_MINUTE)
+        wait = _seconds_until_next_run()
+        hours, remainder = divmod(int(wait), 3600)
+        minutes = remainder // 60
+        logger.info("Next briefing in %dh %dm. Sleeping until %02d:%02d.",
+                     hours, minutes, BRIEFING_HOUR, BRIEFING_MINUTE)
+        time.sleep(wait)
+
+    if not _wait_for_network(allow_remediation=not run_now):
+        sys.exit(1)
+
     _run_briefing()
     sys.exit(0)
 
