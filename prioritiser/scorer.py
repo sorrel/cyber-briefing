@@ -101,7 +101,7 @@ def score_items(items: list[dict], config: dict | None = None) -> dict:
         Parsed JSON response from Claude with scored/annotated items.
     """
     config = config or {}
-    model = config.get("model", "claude-sonnet-4-20250514")
+    model = config.get("model", "claude-sonnet-4-6")
     max_items = config.get("max_items", 15)
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
