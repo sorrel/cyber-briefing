@@ -15,17 +15,38 @@ from urllib.parse import quote
 logger = logging.getLogger("cyberbriefing.delivery.bear")
 
 
+def _bear_is_running() -> bool:
+    """Return True if Bear.app is already running."""
+    result = subprocess.run(["pgrep", "-x", "Bear"], capture_output=True)
+    return result.returncode == 0
+
+
 def deliver_to_bear(title: str, body: str, tags: list[str]) -> bool:
-    """Create a Bear note, trying x-callback-url then AppleScript then file."""
+    """Create a Bear note, trying x-callback-url then AppleScript then file.
+
+    x-callback-url via `open` only works reliably when Bear is already running —
+    it returns exit code 0 immediately without waiting for Bear to process the URL.
+    When Bear is not running we skip straight to AppleScript, which launches the
+    app and waits for it to be ready before executing the command.
+
+    A markdown backup is always written regardless of Bear delivery outcome, so
+    the briefing is never silently lost if Bear fails at 06:00.
+    """
     if sys.platform != "darwin":
         logger.warning("Not running on macOS — falling back to markdown file")
         return _write_markdown_file(title, body, tags)
 
-    if _deliver_via_xcallback(title, body, tags):
+    bear_running = _bear_is_running()
+
+    if bear_running and _deliver_via_xcallback(title, body, tags):
+        _write_markdown_file(title, body, tags)
         return True
 
-    logger.info("x-callback-url failed, trying AppleScript")
+    if not bear_running:
+        logger.info("Bear not running — skipping x-callback-url, using AppleScript directly")
+
     if _deliver_via_applescript(title, body, tags):
+        _write_markdown_file(title, body, tags)
         return True
 
     logger.info("AppleScript failed, falling back to markdown file")
