@@ -19,6 +19,14 @@ TIER_HEADERS = {
 
 TIER_ORDER = ["critical", "notable", "radar", "britain"]
 
+VULN_SOURCES = {"nvd", "cisa_kev", "github_advisories", "hackerone"}
+
+TIER_LABELS = {
+    "critical": "Critical",
+    "notable": "Notable",
+    "radar": "Radar",
+}
+
 
 def format_briefing(
     scored_items: list[dict],
@@ -55,16 +63,63 @@ def format_briefing(
         "",
     ]
 
-    # Group items by tier
+    # Separate vulnerability items (structured data sources) from general items.
+    # Britain items stay in the britain section regardless of source.
+    vuln_items: list[dict] = []
     tiers: dict[str, list[dict]] = {t: [] for t in TIER_ORDER}
+
     for item in scored_items:
         tier = item.get("tier", "radar")
-        if tier in tiers:
+        if tier not in tiers:
+            tier = "radar"
+        original = item_lookup.get(item.get("id", ""), {})
+        source = original.get("source", item.get("source", ""))
+        if tier != "britain" and source in VULN_SOURCES:
+            vuln_items.append(item)
+        else:
             tiers[tier].append(item)
 
     # Collect all tags
     all_tags = set()
 
+    # --- Vulnerabilities section ---
+    if vuln_items:
+        lines.append("---")
+        lines.append("")
+        lines.append("## 🔒 Vulnerabilities")
+        lines.append("")
+        for item in vuln_items:
+            original = item_lookup.get(item.get("id", ""), {})
+            item_url = original.get("url", item.get("url", ""))
+            item_source = _pretty_source(
+                original.get("source", item.get("source", ""))
+            )
+            summary = item.get("summary", item.get("title", ""))
+            annotation = item.get("annotation", "")
+            also_covered = item.get("also_covered_by", [])
+            item_tags = item.get("tags", [])
+            composite = item.get("composite", 0)
+            tier = item.get("tier", "radar")
+            tier_label = TIER_LABELS.get(tier, tier.title())
+
+            lines.append(f"### {summary}")
+
+            source_links = [f"[{item_source}]({item_url})"]
+            for other in also_covered:
+                other_name = _pretty_source(other.get("source", ""))
+                other_url = other.get("url", "")
+                if other_url:
+                    source_links.append(f"[{other_name}]({other_url})")
+            lines.append(" · ".join(source_links))
+
+            if annotation:
+                lines.append(annotation)
+
+            lines.append(f"*Score: {composite:.1f} · {tier_label}*")
+            lines.append("")
+            all_tags.update(item_tags)
+
+    # --- Regular tier sections (no vulnerability items) ---
     for tier_key in TIER_ORDER:
         tier_items = tiers[tier_key]
         if not tier_items:
@@ -89,7 +144,6 @@ def format_briefing(
             composite = item.get("composite", 0)
 
             if tier_key == "britain":
-                # Headlines-only: headline linked, source name in italics
                 if item_url:
                     lines.append(f"- [{summary}]({item_url}) · *{item_source}*")
                 else:
@@ -98,10 +152,8 @@ def format_briefing(
                 all_tags.update(item_tags)
                 continue
 
-            # Heading with primary link
             lines.append(f"### {summary}")
 
-            # Source links
             source_links = [f"[{item_source}]({item_url})"]
             for other in also_covered:
                 other_name = _pretty_source(other.get("source", ""))
@@ -110,18 +162,16 @@ def format_briefing(
                     source_links.append(f"[{other_name}]({other_url})")
             lines.append(" · ".join(source_links))
 
-            # Annotation
             if annotation:
                 lines.append(annotation)
 
-            # Score (subtle, for tuning visibility)
             lines.append(f"*Score: {composite:.1f}*")
             lines.append("")
 
             all_tags.update(item_tags)
 
     # If no items at all
-    if not any(tiers.values()):
+    if not vuln_items and not any(tiers.values()):
         lines.append("---")
         lines.append("")
         lines.append("*No items above threshold today. Quiet day.*")

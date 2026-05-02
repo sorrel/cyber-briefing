@@ -149,7 +149,10 @@ def score_items(items: list[dict], config: dict | None = None) -> dict:
         all_scored.extend(scored)
 
     all_scored.sort(key=lambda x: x.get("composite", 0), reverse=True)
-    all_scored = all_scored[:max_items]
+    high_floor = config.get("high_score_floor", 18)
+    high_items = [x for x in all_scored if x.get("composite", 0) >= high_floor]
+    other_items = [x for x in all_scored if x.get("composite", 0) < high_floor]
+    all_scored = high_items + other_items[:max(0, max_items - len(high_items))]
 
     logger.info("Claude returned %d scored items across %d chunk(s)", len(all_scored), n_chunks)
     return {"briefing_date": "", "items": all_scored}
