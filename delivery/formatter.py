@@ -112,9 +112,6 @@ def format_briefing(
                     source_links.append(f"[{other_name}]({other_url})")
             lines.append(" · ".join(source_links))
 
-            if annotation:
-                lines.append(annotation)
-
             lines.append(f"*Score: {composite:.1f} · {tier_label}*")
             lines.append("")
             all_tags.update(item_tags)
