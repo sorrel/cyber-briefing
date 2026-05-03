@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from briefing import load_config, run_pipeline, setup_logging
 
@@ -18,7 +19,10 @@ RETRY_DELAY = 300
 NETWORK_INITIAL_PROBE_SECS = 30   # probe window before attempting remediation
 NETWORK_POST_FLUSH_PROBE_SECS = 90  # probe window after DNS flush
 
-# Environment variable set when restarting for a fresh process state.
+# Flag file written before restart so launchd-restarted process runs immediately.
+_RUN_NOW_FLAG = Path.home() / '.cyberbriefing' / 'run-now'
+
+# Legacy env-var kept for backward compatibility (checked but no longer written).
 _RUN_NOW_ENV = 'CYBERBRIEFING_RUN_NOW'
 
 logger = logging.getLogger("cyberbriefing.daemon")
@@ -68,11 +72,17 @@ def _flush_dns():
 
 
 def _restart_for_fresh_state():
-    """Replace this process with a fresh copy, skipping the sleep."""
+    """Exit so launchd restarts with fresh FDs; flag file ensures immediate run."""
     logger.info("Restarting daemon process to clear stale network state.")
-    env = os.environ.copy()
-    env[_RUN_NOW_ENV] = '1'
-    os.execve(sys.executable, sys.argv, env)
+    # os.execve is unreliable when launched via 'uv run' (argv/cwd ambiguity,
+    # and if FDs are already EBADF the exec itself may fail silently).
+    # A flag file survives any launchd restart cleanly.
+    try:
+        _RUN_NOW_FLAG.parent.mkdir(parents=True, exist_ok=True)
+        _RUN_NOW_FLAG.touch()
+    except OSError:
+        pass  # If we can't write the flag, the restart still gives fresh FDs
+    sys.exit(0)
 
 
 def _wait_for_network(allow_remediation: bool) -> bool:
@@ -128,6 +138,12 @@ def main():
     setup_logging(verbose=False)
 
     run_now = bool(os.environ.pop(_RUN_NOW_ENV, None))
+    if not run_now and _RUN_NOW_FLAG.exists():
+        try:
+            _RUN_NOW_FLAG.unlink()
+        except OSError:
+            pass
+        run_now = True
 
     def _shutdown(signum, frame):
         logger.info("Received signal %d — shutting down.", signum)

@@ -126,11 +126,18 @@ tail -f /tmp/cyberbriefing.err   # pipeline output
 - Process drift over 20+ h: daemon now calls `sys.exit(0)` after each run; launchd restarts it fresh each day.
 - Per-attempt exception logging: `_probe_for()` logs the exception type and message on every failed probe.
 
+**Confirmed instance (3 May 2026): `EBADF` + broken restart mechanism**
+
+**Symptom:** All network probes failed with `OSError: [Errno 9] Bad file descriptor` at 06:00. After the DNS flush + 90s retry window also failed, the daemon called `_restart_for_fresh_state()` which used `os.execve`. The `os.execve` call failed silently (likely because FDs were already EBADF, so the exec itself couldn't proceed, and the traceback couldn't write to stderr either). launchd restarted the process cleanly — but without `CYBERBRIEFING_RUN_NOW` in the env — so it went back to sleep for 23h57m and skipped that day's briefing entirely.
+
+**Root cause of EBADF:** After ~11 hours in `time.sleep()`, macOS's mDNSResponder communication socket (used internally by `getaddrinfo`) goes stale. Even `socket.create_connection()` fails because creating a fresh socket hits the same stale state. Clears immediately on process restart with fresh FDs.
+
+**Fix applied (3 May 2026):** Replaced `os.execve` in `_restart_for_fresh_state()` with a flag file (`~/.cyberbriefing/run-now`) + `sys.exit(0)`. `main()` checks for the flag file on startup and deletes it if present, setting `run_now=True`. This survives launchd restarts reliably regardless of exec failures or FD state.
+
 **Remaining open hypotheses (if network failure recurs):**
 
-1. **Process restarted by launchd mid-run.** `KeepAlive=true` restarts on any exit. If a run crashed partway, stderr might not show it. Check: `log show --predicate 'process == "daemon.py"'` for crash traces around 06:00.
-2. **Something scheduled on the Mac mini touching the network around 06:00** — VPN reconnect (Tailscale, WireGuard), Little Snitch rule reload, or a custom `periodic` script. Check: `launchctl list | grep -v com.apple`.
-3. **File descriptor / socket leak after N days.** After many consecutive runs the process could hit `EMFILE`. Check: `lsof -p $PID | wc -l` on startup and after each run.
+1. **Something scheduled on the Mac mini touching the network around 06:00** — VPN reconnect (Tailscale, WireGuard), Little Snitch rule reload, or a custom `periodic` script. Check: `launchctl list | grep -v com.apple`.
+2. **File descriptor / socket leak after N days.** After many consecutive runs the process could hit `EMFILE`. Check: `lsof -p $PID | wc -l` on startup and after each run.
 
 ## Secrets
 
