@@ -16,8 +16,12 @@ BRIEFING_HOUR = 6
 BRIEFING_MINUTE = 0
 MAX_RETRIES = 6
 RETRY_DELAY = 300
-NETWORK_INITIAL_PROBE_SECS = 30   # probe window before attempting remediation
+NETWORK_INITIAL_PROBE_SECS = 30    # probe window before attempting remediation
 NETWORK_POST_FLUSH_PROBE_SECS = 90  # probe window after DNS flush
+# After process restart the OS network stack may still be broken (not just stale FDs).
+# Sleep before probing so whatever caused the 06:00 outage can clear.
+NETWORK_POST_RESTART_SLEEP_SECS = 120   # 2-minute buffer after restart
+NETWORK_POST_RESTART_PROBE_SECS = 600   # 10-minute probe window in fresh process
 
 # Flag file written before restart so launchd-restarted process runs immediately.
 _RUN_NOW_FLAG = Path.home() / '.cyberbriefing' / 'run-now'
@@ -89,16 +93,30 @@ def _wait_for_network(allow_remediation: bool) -> bool:
     """
     Probe network, with active remediation on first failure.
 
-    - Probes for 30s.
-    - On failure: flushes DNS, waits 10s, probes for another 90s.
-    - If still failing: restarts the process entirely (fresh resolver state).
-    - allow_remediation=False (post-restart run): single 30s probe, then give up.
+    First run (allow_remediation=True):
+    - Probes 30s; on failure flushes DNS, waits 10s, probes 90s more.
+    - If still failing: restarts the process (flag file → launchd restart).
+
+    Post-restart run (allow_remediation=False):
+    - The OS network stack itself may be broken (not just stale FDs in this process).
+    - Sleeps 2 minutes to let whatever caused the outage clear, then probes for 10 minutes.
+    - Gives up only if network is still absent after that window.
     """
     logger.info("Probing network (initial %ds window).", NETWORK_INITIAL_PROBE_SECS)
     if _probe_for(NETWORK_INITIAL_PROBE_SECS):
         return True
 
     if not allow_remediation:
+        # A fresh process restart did not clear the EBADF — the OS network stack is broken.
+        # Wait for it to recover rather than giving up immediately.
+        logger.warning(
+            "Network unavailable in fresh process. Waiting %ds for OS stack to recover.",
+            NETWORK_POST_RESTART_SLEEP_SECS,
+        )
+        time.sleep(NETWORK_POST_RESTART_SLEEP_SECS)
+        logger.info("Probing network post-restart (%ds window).", NETWORK_POST_RESTART_PROBE_SECS)
+        if _probe_for(NETWORK_POST_RESTART_PROBE_SECS):
+            return True
         logger.error("Network still unavailable after restart — skipping today's briefing.")
         return False
 

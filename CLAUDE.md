@@ -130,14 +130,23 @@ tail -f /tmp/cyberbriefing.err   # pipeline output
 
 **Symptom:** All network probes failed with `OSError: [Errno 9] Bad file descriptor` at 06:00. After the DNS flush + 90s retry window also failed, the daemon called `_restart_for_fresh_state()` which used `os.execve`. The `os.execve` call failed silently (likely because FDs were already EBADF, so the exec itself couldn't proceed, and the traceback couldn't write to stderr either). launchd restarted the process cleanly — but without `CYBERBRIEFING_RUN_NOW` in the env — so it went back to sleep for 23h57m and skipped that day's briefing entirely.
 
-**Root cause of EBADF:** After ~11 hours in `time.sleep()`, macOS's mDNSResponder communication socket (used internally by `getaddrinfo`) goes stale. Even `socket.create_connection()` fails because creating a fresh socket hits the same stale state. Clears immediately on process restart with fresh FDs.
+**Root cause of EBADF:** The OS network stack (not just the Python process's FDs) enters a broken state at 06:00. The EBADF is not caused by stale FDs within a long-running process — confirmed because even a freshly launchd-restarted process immediately exhibits the same error. Whatever triggers this (see hypotheses below) affects the entire machine's socket layer transiently around 06:00.
 
 **Fix applied (3 May 2026):** Replaced `os.execve` in `_restart_for_fresh_state()` with a flag file (`~/.cyberbriefing/run-now`) + `sys.exit(0)`. `main()` checks for the flag file on startup and deletes it if present, setting `run_now=True`. This survives launchd restarts reliably regardless of exec failures or FD state.
 
+**Fix applied (4 May 2026): post-restart probe window too short**
+
+**Symptom (4 May 2026):** Daemon ran at 06:00, got EBADF on all probes. DNS flush also failed. Called `_restart_for_fresh_state()` — flag file written, process exited, launchd restarted cleanly. Fresh process (`run_now=True`) began probing at 06:02:14 and was given only 30 seconds before giving up. EBADF persisted in the fresh process too. Gave up at 06:02:44, slept until 06:00 tomorrow. Briefing skipped for the second consecutive day.
+
+**Key insight:** The previous hypothesis ("clears immediately on process restart") was wrong. The EBADF reflects an OS-level network outage at 06:00, not stale FDs. The fresh process starts probing during the outage and gives up before the network recovers.
+
+**Fix:** `_wait_for_network()` now gives the post-restart process a 2-minute sleep (let the outage clear) followed by a 10-minute probe window, rather than abandoning after 30s. This is sufficient to weather a transient OS-level network disruption without skipping the briefing.
+
 **Remaining open hypotheses (if network failure recurs):**
 
-1. **Something scheduled on the Mac mini touching the network around 06:00** — VPN reconnect (Tailscale, WireGuard), Little Snitch rule reload, or a custom `periodic` script. Check: `launchctl list | grep -v com.apple`.
-2. **File descriptor / socket leak after N days.** After many consecutive runs the process could hit `EMFILE`. Check: `lsof -p $PID | wc -l` on startup and after each run.
+1. **Something scheduled on the Mac mini touching the network at 06:00** — VPN reconnect (Tailscale, WireGuard), Little Snitch rule reload, or a custom `periodic` script. Check: `launchctl list | grep -v com.apple`. This is the most likely root cause given EBADF persists across process restarts.
+2. **ISP DHCP renewal or router maintenance at 06:00** — causes a brief total network outage that macOS surfaces as EBADF on socket creation.
+3. **File descriptor / socket leak after N days.** After many consecutive runs the process could hit `EMFILE`. Check: `lsof -p $PID | wc -l` on startup and after each run.
 
 ## Secrets
 
