@@ -4,6 +4,10 @@
 
 A Python pipeline that runs daily to produce a prioritised cybersecurity briefing, delivered to Bear Notes. It gathers from 17+ sources (APIs, RSS feeds, scrapers), scores each item using Claude, and formats a tiered markdown document.
 
+## Deployment environment
+
+Runs on a **Mac mini that is on 24/7** — not a laptop. No sleep/wake cycles, no Wi-Fi roaming, no battery state, no lid-close. Reasoning that assumes laptop conditions (e.g., "the Mac just woke up at 06:00") does not apply here.
+
 ## Running it
 
 ```bash
@@ -12,9 +16,6 @@ uv run python briefing.py --dry-run     # Full pipeline → stdout (no state cha
 uv run python briefing.py --gather-only # Collect only, mark seen, no scoring
 uv run python briefing.py --stats       # Show DB stats by source
 uv run python briefing.py               # Real run → Bear Notes
-
-# Daemon (long-running, sleeps until 06:00)
-uv run python daemon.py                 # Runs daily at 06:00, managed by launchd
 ```
 
 ## Architecture
@@ -87,21 +88,33 @@ Edit `config.yaml`:
 
 ## Scheduling
 
-`daemon.py` is a long-running process that sleeps until 06:00, runs the briefing, then sleeps until the next day. Managed by launchd with `RunAtLoad` + `KeepAlive` — starts at login and restarts if it crashes. This avoids launchd TCC/network issues that affect cron-style scheduling from `~/Documents/`.
+Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. Two slots:
+
+- **06:15** — primary fire.
+- **07:30** — idempotent fallback. `briefing.py` checks `state.db` (`was_delivered_today()`) and exits cleanly if today's briefing has already been delivered, so this is a no-op on good days and the only thing that runs on bad days.
+
+The plist is hardened for correct user GUI context — this is what the previous long-running daemon got wrong:
+
+- `LimitLoadToSessionType = Aqua` — only loads in the user GUI session, where `mDNSResponder` mach ports are usable.
+- `ProcessType = Interactive` — full scheduling priority; not background-throttled.
+- `RunAtLoad = false` — fires only on schedule.
+- Wrapped in `caffeinate -is` — keeps the system out of any idle/sleep transition during the run.
 
 ```bash
-# Install
+# Install (or re-install after plist edits)
+launchctl bootout gui/$(id -u)/com.cyberbriefing.daily 2>/dev/null
 cp com.cyberbriefing.daily.plist ~/Library/LaunchAgents/
-# Edit __PROJECT_DIR__ placeholder to actual path
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
 
-# Restart after changes
-launchctl bootout gui/$(id -u)/com.cyberbriefing.daily
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
+# Manual fire (e.g. for testing)
+launchctl kickstart -k gui/$(id -u)/com.cyberbriefing.daily
+
+# Inspect context (confirm Aqua / Interactive)
+launchctl print gui/$(id -u)/com.cyberbriefing.daily
 
 # Logs
-tail -f /tmp/cyberbriefing.log   # daemon status
-tail -f /tmp/cyberbriefing.err   # pipeline output
+tail -f /tmp/cyberbriefing.log
+tail -f /tmp/cyberbriefing.err
 ```
 
 ## Bear delivery bug — investigation and fix (30 April 2026)
@@ -116,18 +129,27 @@ tail -f /tmp/cyberbriefing.err   # pipeline output
 
 2. **Always-on markdown backup** (`delivery/bear.py`): After any successful Bear delivery (x-callback-url or AppleScript), `_write_markdown_file()` is also called. A dated `.md` file is always written to `~/cyberbriefing-output/`, so the briefing is never silently lost even if Bear fails.
 
-## Recurring 06:00 network-failure bug — resolved (4 May 2026)
+## Recurring 06:00 EBADF bug — diagnosis and fix (4 May 2026, corrected)
 
-**Root cause:** The network probe itself was the bug. The network is always available at 06:00; the EBADF errors from `socket.getaddrinfo` / `socket.create_connection` are false positives — the probe code reports failure regardless of actual connectivity, and the conditions when it succeeds vs. fails are identical. Every attempt to remediate (DNS flush, process restart, extended retry windows) was fighting a symptom that didn't exist.
+**Symptom:** roughly half of mornings, `socket.getaddrinfo` / `socket.create_connection` returned `OSError: [Errno 9] Bad file descriptor`. Every collector failed; no briefing delivered. Other times of day were fine.
 
-**Fix (4 May 2026):** Removed the network probe entirely. The daemon now just runs the briefing at 06:00 without any pre-flight connectivity check. Genuine network failures are handled by the collectors' own error handling and the `_run_briefing()` retry loop.
+**Earlier wrong diagnoses (recorded so we don't re-explore them):**
 
-**History of failed attempts to fix the probe (kept for context):**
+- *Stale DNS:* added `dscacheutil` flush + `mDNSResponder` HUP. No effect.
+- *IPv6 timing:* forced `AF_INET`. No effect.
+- *Stale process FDs (3 May 2026):* `sys.exit(0)` to make launchd respawn with fresh FDs. Flag-file mechanism worked, but the fresh process **also** got EBADF — which ruled out our process state.
+- *Post-restart window too short:* extended probe to 10 min. Same result, superseded same day.
+- *"The probe is the bug" (4 May, morning):* assumed the probe was a false positive and removed it. This was wrong too — removing the probe just means the collectors hit the same EBADF instead.
 
-- *Stale DNS hypothesis:* Added DNS flush via `dscacheutil` + `killall -HUP mDNSResponder`. Did not help — probe still failed.
-- *IPv6 timing hypothesis:* `_probe_once()` forced `AF_INET`. Did not help.
-- *Stale process FDs hypothesis (3 May 2026):* Added `_restart_for_fresh_state()` — flag file + `sys.exit(0)` so launchd restarts with fresh FDs. Flag file mechanism worked, but fresh process also got EBADF. Network was fine throughout.
-- *Post-restart window too short (4 May 2026 — morning):* Extended post-restart probe to 2-minute sleep + 10-minute window. Immediately superseded by removing the probe entirely.
+**Actual root cause:** the launchd agent was being spawned in the **wrong macOS user context**. `launchctl print` showed `spawn type = daemon (3)` and a stripped `inherited environment` — i.e., a background daemon-style spawn rather than an Aqua user-GUI spawn. On macOS, `getaddrinfo` uses mach IPC to `mDNSResponder`; if the spawning context doesn't have the right mach-port access (typically because the agent isn't pinned to the Aqua session, the screen is locked, and the user session is in a degraded state), the resolver port comes back with a closed FD → EBADF on every name lookup. Even a launchd-restarted "fresh" process inherits the same bad bootstrap context, which is why restarting didn't help.
+
+**Fix (4 May 2026, evening):**
+
+1. **Rewrote the plist for correct user context** — added `LimitLoadToSessionType = Aqua`, `ProcessType = Interactive`, `RunAtLoad = false`, and wrapped the program in `caffeinate -is`. See the *Scheduling* section above.
+2. **Replaced the long-running daemon with cron-style** `StartCalendarInterval` at 06:15 + 07:30. Each fire is a fresh process in the proper Aqua context. `daemon.py` deleted.
+3. **Added idempotency** — `db.state.was_delivered_today()` / `mark_delivered_today()` (re-using the existing `scraper_runs` table); `briefing.py` exits cleanly at the top of `run_pipeline` if today's briefing is already delivered, so the 07:30 fallback is a free no-op on good days.
+
+The previous Bear-delivery fix (markdown backup, AppleScript fallback) is unchanged.
 
 ## Secrets
 

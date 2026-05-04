@@ -33,6 +33,8 @@ from db.state import (
     get_stats,
     clear_source,
     prune_old_unseen,
+    was_delivered_today,
+    mark_delivered_today,
 )
 from prioritiser.scorer import score_items
 from prioritiser.clusterer import cluster_items
@@ -159,6 +161,13 @@ def run_pipeline(
     logger = logging.getLogger("cyberbriefing")
     db_conn = get_connection()
 
+    # Idempotency: the launchd 07:30 fallback fires the same script — exit
+    # cleanly if 06:15 already delivered today. Skipped for dry-run/gather-only
+    # so manual re-runs aren't blocked.
+    if not dry_run and not gather_only and was_delivered_today(db_conn):
+        logger.info("Briefing already delivered today — skipping.")
+        return True
+
     # --- Periodic DB maintenance (auto-prunes items >180 days old that were
     #     never included in a briefing; runs at most once a month) ---
     _maybe_prune(db_conn)
@@ -244,6 +253,8 @@ def run_pipeline(
 
     if success:
         logger.info("Briefing delivered successfully: %s", title)
+        if not dry_run:
+            mark_delivered_today(db_conn)
     else:
         logger.error("Briefing delivery failed")
 

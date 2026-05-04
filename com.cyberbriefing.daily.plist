@@ -5,25 +5,54 @@
     <key>Label</key>
     <string>com.cyberbriefing.daily</string>
 
-    <!-- Long-running daemon: sleeps until 06:00, runs the briefing, repeats.
-         RunAtLoad starts it at login; KeepAlive restarts if it crashes.
-         This avoids launchd TCC/network issues with cron-style scheduling. -->
+    <!-- Cron-style: launchd starts a fresh process at each calendar slot.
+         Pinned to the Aqua user GUI session so getaddrinfo / mDNSResponder
+         have full mach-port access (the EBADF at 06:00 was a wrong-context
+         spawn problem, not a network problem).
+
+         06:15 is the primary fire. 07:30 is an idempotent fallback —
+         briefing.py checks state.db and exits cleanly if today is already
+         delivered, so the second fire is a no-op on good days.
+
+         caffeinate -is keeps the system out of any idle/sleep transition
+         while the briefing runs, ensuring the network stack stays fully up. -->
 
     <key>ProgramArguments</key>
     <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-is</string>
         <string>/opt/homebrew/bin/uv</string>
         <string>run</string>
         <string>--directory</string>
         <string>/Users/duncan/Developer/scripts/cyberbriefing</string>
         <string>python</string>
-        <string>daemon.py</string>
+        <string>briefing.py</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Hour</key>
+            <integer>6</integer>
+            <key>Minute</key>
+            <integer>15</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>7</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
     </array>
 
     <key>RunAtLoad</key>
-    <true/>
+    <false/>
 
-    <key>KeepAlive</key>
-    <true/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
 
     <key>StandardOutPath</key>
     <string>/tmp/cyberbriefing.log</string>

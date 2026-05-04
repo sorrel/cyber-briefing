@@ -136,6 +136,30 @@ def update_scraper_run(conn: sqlite3.Connection, source: str) -> None:
     conn.commit()
 
 
+# Slot used in scraper_runs to record successful end-to-end briefing delivery.
+# Re-uses the existing table rather than introducing a new one.
+_DELIVERED_SLOT = "_briefing_delivered"
+
+
+def was_delivered_today(conn: sqlite3.Connection) -> bool:
+    """Return True if a briefing has already been delivered today (local date).
+
+    Used by the launchd 07:30 fallback fire to no-op when the 06:15 run succeeded.
+    """
+    row = conn.execute(
+        "SELECT last_checked FROM scraper_runs WHERE source = ?", (_DELIVERED_SLOT,)
+    ).fetchone()
+    if row is None:
+        return False
+    last = datetime.fromisoformat(row["last_checked"])
+    return last.astimezone().date() == datetime.now().astimezone().date()
+
+
+def mark_delivered_today(conn: sqlite3.Connection) -> None:
+    """Record that a briefing was successfully delivered just now."""
+    update_scraper_run(conn, _DELIVERED_SLOT)
+
+
 def clear_source(conn: sqlite3.Connection, source: str) -> int:
     """Delete all seen_items records for a given source.
 
