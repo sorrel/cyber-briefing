@@ -8,9 +8,12 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
+
+MARKDOWN_RETENTION_DAYS = 7
 
 logger = logging.getLogger("cyberbriefing.delivery.bear")
 
@@ -132,7 +135,25 @@ def _write_markdown_file(title: str, body: str, tags: list[str]) -> bool:
         content = f"# {title}\n\n{tag_line}\n\n{body}"
         filepath.write_text(content, encoding="utf-8")
         logger.info("Wrote markdown fallback to %s", filepath)
+        _prune_old_markdown_files(output_dir)
         return True
     except Exception as e:
         logger.error("Failed to write markdown file: %s", e)
         return False
+
+
+def _prune_old_markdown_files(output_dir: Path) -> None:
+    """Delete .md files older than MARKDOWN_RETENTION_DAYS by mtime.
+
+    Bear is the canonical store; this directory is a safety net for the case
+    where Bear delivery silently fails. Bounded retention keeps it from
+    growing unbounded.
+    """
+    cutoff = time.time() - MARKDOWN_RETENTION_DAYS * 86400
+    for path in output_dir.glob("*.md"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                logger.info("Pruned old markdown backup: %s", path.name)
+        except OSError as e:
+            logger.warning("Failed to prune %s: %s", path, e)
