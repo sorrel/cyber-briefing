@@ -100,7 +100,14 @@ The plist is hardened for correct user GUI context — this is what the previous
 - `RunAtLoad = false` — fires only on schedule.
 - Wrapped in `caffeinate -is` — keeps the system out of any idle/sleep transition during the run.
 
+The plist also requires the system to be in a real wake state at the schedule time. Even on the always-on Mac mini, macOS keeps the user session in a degraded "dark wake" overnight that breaks `getaddrinfo` with EBADF (see the *Recurring 06:00 EBADF bug — actual fix (9 May 2026)* section). A `pmset repeat` schedules a real user-session wake at 06:10, five minutes before the primary fire.
+
 ```bash
+# One-time: schedule a real daily wake five minutes before the primary fire.
+sudo pmset repeat wakeorpoweron MTWRFSU 06:10:00
+# Verify
+pmset -g sched
+
 # Install (or re-install after plist edits)
 launchctl bootout gui/$(id -u)/com.cyberbriefing.daily 2>/dev/null
 cp com.cyberbriefing.daily.plist ~/Library/LaunchAgents/
@@ -129,7 +136,7 @@ tail -f /tmp/cyberbriefing.err
 
 2. **Always-on markdown backup** (`delivery/bear.py`): After any successful Bear delivery (x-callback-url or AppleScript), `_write_markdown_file()` is also called. A dated `.md` file is always written to `~/cyberbriefing-output/`, so the briefing is never silently lost even if Bear fails.
 
-## Recurring 06:00 EBADF bug — diagnosis and fix (4 May 2026, corrected)
+## Recurring 06:00 EBADF bug — diagnosis and partial fix (4 May 2026, superseded 9 May — see next section)
 
 **Symptom:** roughly half of mornings, `socket.getaddrinfo` / `socket.create_connection` returned `OSError: [Errno 9] Bad file descriptor`. Every collector failed; no briefing delivered. Other times of day were fine.
 
@@ -150,6 +157,22 @@ tail -f /tmp/cyberbriefing.err
 3. **Added idempotency** — `db.state.was_delivered_today()` / `mark_delivered_today()` (re-using the existing `scraper_runs` table); `briefing.py` exits cleanly at the top of `run_pipeline` if today's briefing is already delivered, so the 07:30 fallback is a free no-op on good days.
 
 The previous Bear-delivery fix (markdown backup, AppleScript fallback) is unchanged.
+
+## Recurring 06:00 EBADF bug — actual fix (9 May 2026)
+
+The 4 May plist rewrite (Aqua / Interactive / `caffeinate -is`) was necessary but **not sufficient**. On 9 May 2026 both the 06:15 and 07:30 fires hit EBADF on every source, despite `launchctl print` confirming `spawn type = interactive (4)`. Within seconds of the user touching the Mac, the same pipeline ran cleanly with the same launchd setup — proving the launchd-context theory was incomplete.
+
+**Actual root cause:** macOS keeps the Mac mini in a reduced "dark wake" overnight even though the machine is on 24/7. In that state, user-session services like `mDNSResponder` are gated; `getaddrinfo` returns EBADF because its mach-port endpoint is not usable. `caffeinate -is` only blocks *new* idle/sleep transitions during the run — it does nothing to restore a session that is already in a degraded state when the script starts.
+
+**Fix (9 May 2026, Claude claude-opus-4-7):**
+
+```bash
+sudo pmset repeat wakeorpoweron MTWRFSU 06:10:00
+```
+
+A real user-session wake five minutes before the launchd fire. By 06:15 the system is fully active and `getaddrinfo` works. Persists across reboots; cancel with `sudo pmset repeat cancel`; verify with `pmset -g sched`. The 07:30 fallback remains as belt-and-braces in case anything else interferes.
+
+The 4 May plist setup (Aqua, Interactive, caffeinate, cron-style schedule, idempotency) and the 30 April Bear-delivery fix are unchanged — both still required, just not on their own enough.
 
 ## Secrets
 
