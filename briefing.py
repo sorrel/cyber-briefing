@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -87,8 +88,13 @@ def _run_scraper(db_conn, scrapers_config: dict, name: str, module, default_inte
     return items
 
 
-def gather_all(config: dict, db_conn) -> list[dict]:
-    """Run all collectors and return unseen items."""
+def gather_all(config: dict, db_conn) -> tuple[list[dict], int]:
+    """Run all collectors and return (unseen items, total items collected).
+
+    The total-collected count is the failure signal for run_pipeline: a healthy
+    run gathers hundreds of items, so total == 0 means every source returned
+    nothing — virtually always a network-layer block, not a genuine quiet day.
+    """
     all_items = []
 
     # --- Tier 1: Structured APIs ---
@@ -146,7 +152,7 @@ def gather_all(config: dict, db_conn) -> list[dict]:
         len(new_items),
     )
 
-    return new_items
+    return new_items, len(all_items)
 
 
 def run_pipeline(
@@ -177,7 +183,7 @@ def run_pipeline(
     logger.info("Stage 1: Gathering from all sources")
     logger.info("=" * 50)
 
-    new_items = gather_all(config, db_conn)
+    new_items, total_gathered = gather_all(config, db_conn)
 
     if gather_only:
         logger.info("Gather-only mode: %d new items found", len(new_items))
@@ -187,6 +193,16 @@ def run_pipeline(
             print(f"  ... and {len(new_items) - 20} more")
         mark_seen_batch(db_conn, new_items, included=False)
         return True
+
+    # All-sources-failed alarm: every source returned zero items. A healthy
+    # run gathers hundreds, so this is the network-blocked-at-OS-layer signal
+    # — not a genuine quiet day. Write a visible failure marker and exit
+    # non-zero so launchd records the failure.
+    if total_gathered == 0:
+        logger.error("All sources returned zero items — treating as failure.")
+        if not dry_run:
+            _write_failure_marker()
+        return False
 
     if not new_items:
         logger.info("No new items to brief on today.")
@@ -259,6 +275,35 @@ def run_pipeline(
         logger.error("Briefing delivery failed")
 
     return success
+
+
+def _write_failure_marker() -> None:
+    """Write a visible FAILURE-<date>.md when every source returned zero items.
+
+    Lives alongside the normal briefing backups in ~/cyberbriefing-output/, so
+    a missing morning is loudly diagnosable rather than silently absent.
+    """
+    logger = logging.getLogger("cyberbriefing")
+    try:
+        output_dir = Path(os.path.expanduser("~/cyberbriefing-output"))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        date = datetime.now().strftime("%Y-%m-%d")
+        path = output_dir / f"FAILURE-{date}.md"
+        path.write_text(
+            f"# Cyber Briefing FAILURE — {date}\n\n"
+            "Every source returned zero items. A healthy run gathers hundreds, "
+            "so this is almost always a network-layer block, not a quiet day.\n\n"
+            "Check first:\n"
+            "- `/tmp/cyberbriefing.err` for the actual collector errors\n"
+            "- Whether a Network Extension (TripMode, Little Snitch, VPN) "
+            "is dropping flows from the uv-managed python interpreter\n"
+            "- `log show --predicate 'process CONTAINS \"TripMode\"' "
+            "--start <fire time> --info` for sandbox / quarantine-resolver errors\n",
+            encoding="utf-8",
+        )
+        logger.error("Wrote failure marker: %s", path)
+    except OSError as e:
+        logger.error("Failed to write failure marker: %s", e)
 
 
 def _maybe_prune(db_conn) -> None:

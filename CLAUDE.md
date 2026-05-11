@@ -174,6 +174,10 @@ A real user-session wake five minutes before the launchd fire. By 06:15 the syst
 
 The 4 May plist setup (Aqua, Interactive, caffeinate, cron-style schedule, idempotency) and the 30 April Bear-delivery fix are unchanged — both still required, just not on their own enough.
 
+## All-sources-failed alarm
+
+`gather_all()` returns `(new_items, total_gathered)`. A healthy run gathers hundreds of items, so `total_gathered == 0` means every collector returned nothing — virtually always a network-layer block (EBADF, Network Extension drop, DNS dead), not a genuine quiet day. When that happens, `run_pipeline()` writes a visible `FAILURE-<YYYY-MM-DD>.md` to `~/cyberbriefing-output/` and exits non-zero so launchd records the failure. Without this, a network-blocked morning was indistinguishable from a quiet news day — silently absent.
+
 ## Secrets
 
 Uses `.env` file (gitignored). Required keys:
@@ -191,6 +195,7 @@ SQLite at `~/.cyberbriefing/state.db`:
 
 - **Empty briefing**: run `--stats` to check item counts; run `--gather-only` to reset "seen" state for debugging
 - **Bear not opening / note missing**: a markdown backup is *always* written to `~/cyberbriefing-output/` after every delivery attempt — check there first
+- **`FAILURE-<date>.md` in `~/cyberbriefing-output/`**: every source returned zero items — see *All-sources-failed alarm* above; check `/tmp/cyberbriefing.err` and any Network Extension (TripMode, Little Snitch, VPN)
 - **ENISA/ICO scraper returning zero items**: site may have been redesigned; check the scraper HTML selectors
 
 ## Britain section
