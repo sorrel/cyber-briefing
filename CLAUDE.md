@@ -37,7 +37,7 @@ collectors/
   ico_scraper.py     ← ICO enforcement actions scraper (weekly)
 delivery/
   formatter.py       ← Converts scored items → markdown (title, body, tags)
-  bear.py            ← Delivers to Bear Notes (x-callback-url if Bear running → AppleScript → markdown file)
+  bear.py            ← Delivers to Bear Notes via x-callback-url; always writes a markdown backup to ~/cyberbriefing-output/
 db/
   state.py           ← SQLite at ~/.cyberbriefing/state.db; tracks seen items + scraper schedules
 ```
@@ -136,6 +136,20 @@ tail -f /tmp/cyberbriefing.err
 
 2. **Always-on markdown backup** (`delivery/bear.py`): After any successful Bear delivery (x-callback-url or AppleScript), `_write_markdown_file()` is also called. A dated `.md` file is always written to `~/cyberbriefing-output/`, so the briefing is never silently lost even if Bear fails.
 
+## Bear AppleScript fallback removed (16 May 2026)
+
+**Symptom:** 16 May 2026 morning briefing ran cleanly at 06:17 (markdown backup written, `state.db` marked delivered) but no note appeared in Bear. Mac had rebooted around 07:44 — almost certainly a macOS update install — and Bear had shut down with it. At 06:17, Bear briefly looked alive (`pgrep` returned true) so `open bear://...` was attempted; the OS handed the URL off (exit 0) but Bear dropped it during shutdown.
+
+**Investigation finding (worth keeping):** Bear 2.8.1 has **no AppleScript scripting interface at all** — no `.sdef` file, no `OSAScriptingDefinition` in `Info.plist`, and `sdef /Applications/Bear.app` returns error -192. The `_deliver_via_applescript()` path with `tell application "Bear" to create note with text …` has therefore never worked; what saved every "Bear closed" morning was the markdown backup, not AppleScript. Verified directly: even from an interactive shell, `osascript -e 'tell application "Bear" to create note with text "x"'` errors with `-2740`.
+
+**Fixes applied (16 May 2026, Claude claude-opus-4-7):**
+
+1. **Deleted the AppleScript branch** from `delivery/bear.py`. It was dead code.
+2. **Real cold-launch path for Bear:** when `pgrep` says Bear is not running, `_launch_bear_and_wait()` calls `open -ga Bear` and then polls `pgrep` until Bear has been alive for ≥2 seconds (capped at 15 s total), which clears the cold-launch URL race that motivated the original 30 April fix.
+3. **Honest return value:** `deliver_to_bear()` no longer claims Bear delivery succeeded when only the markdown backup landed. The return value now reflects whether *anything* (Bear note or markdown) was preserved — markdown is enough on its own, and the 06:15 / 07:30 launchd pair already gives Bear a second attempt on bad mornings.
+
+**What remains undetectable:** today's exact failure mode — Bear briefly alive then terminating mid-callback — cannot be caught client-side. `open` returns 0 the moment the OS accepts the URL handoff; we have no signal that Bear actually consumed it. The markdown backup in `~/cyberbriefing-output/` is the answer here, and on a normal day the user can just open that file directly.
+
 ## Recurring 06:00 EBADF bug — diagnosis and partial fix (4 May 2026, superseded 9 May — see next section)
 
 **Symptom:** roughly half of mornings, `socket.getaddrinfo` / `socket.create_connection` returned `OSError: [Errno 9] Bad file descriptor`. Every collector failed; no briefing delivered. Other times of day were fine.
@@ -156,7 +170,7 @@ tail -f /tmp/cyberbriefing.err
 2. **Replaced the long-running daemon with cron-style** `StartCalendarInterval` at 06:15 + 07:30. Each fire is a fresh process in the proper Aqua context. `daemon.py` deleted.
 3. **Added idempotency** — `db.state.was_delivered_today()` / `mark_delivered_today()` (re-using the existing `scraper_runs` table); `briefing.py` exits cleanly at the top of `run_pipeline` if today's briefing is already delivered, so the 07:30 fallback is a free no-op on good days.
 
-The previous Bear-delivery fix (markdown backup, AppleScript fallback) is unchanged.
+The previous Bear-delivery fix (markdown backup, AppleScript fallback) is unchanged. (The AppleScript fallback was later removed on 16 May 2026 — see *Bear AppleScript fallback removed* above. Markdown backup is unchanged.)
 
 ## Recurring 06:00 EBADF bug — actual fix (9 May 2026)
 

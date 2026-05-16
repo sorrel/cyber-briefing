@@ -1,7 +1,17 @@
 """Bear Notes delivery module.
 
-Creates a Bear note using the bear:// x-callback-url scheme on macOS.
-Falls back to AppleScript, then to a markdown file.
+Bear 2.x exposes no AppleScript scripting interface (no .sdef, no
+OSAScriptingDefinition in Info.plist — `sdef` returns -192). The only
+programmatic path is the bear:// x-callback-url scheme.
+
+Delivery strategy:
+  1. If Bear is running, send the URL straight away.
+  2. If Bear is not running, launch it, wait until the process has been
+     alive long enough to be past its startup race, then send the URL.
+  3. Always write a markdown backup so the briefing is never lost — `open`
+     returns 0 the instant the OS accepts the URL handoff, so we cannot
+     tell if Bear actually consumed it (e.g. if Bear was shutting down for
+     a macOS update, as happened on 16 May 2026).
 """
 
 import logging
@@ -9,11 +19,16 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
 MARKDOWN_RETENTION_DAYS = 7
+
+# How long to wait for a cold-launched Bear to settle before sending the URL.
+# `open` returns immediately when the OS hands the URL off, so if we fire too
+# early the URL is dropped on the floor during Bear's startup.
+_BEAR_LAUNCH_TIMEOUT_S = 15
+_BEAR_LAUNCH_SETTLE_S = 2
 
 logger = logging.getLogger("cyberbriefing.delivery.bear")
 
@@ -24,36 +39,58 @@ def _bear_is_running() -> bool:
     return result.returncode == 0
 
 
+def _launch_bear_and_wait() -> bool:
+    """Launch Bear in the background and wait for it to be ready.
+
+    Returns True once Bear has been alive for at least _BEAR_LAUNCH_SETTLE_S
+    seconds, False if it doesn't come up within _BEAR_LAUNCH_TIMEOUT_S.
+    """
+    try:
+        subprocess.run(["open", "-ga", "Bear"], capture_output=True, timeout=10)
+    except Exception as e:
+        logger.warning("Failed to launch Bear: %s", e)
+        return False
+
+    deadline = time.monotonic() + _BEAR_LAUNCH_TIMEOUT_S
+    first_seen: float | None = None
+    while time.monotonic() < deadline:
+        if _bear_is_running():
+            if first_seen is None:
+                first_seen = time.monotonic()
+            if time.monotonic() - first_seen >= _BEAR_LAUNCH_SETTLE_S:
+                return True
+        else:
+            first_seen = None
+        time.sleep(0.5)
+    logger.warning("Bear did not come up within %ds", _BEAR_LAUNCH_TIMEOUT_S)
+    return False
+
+
 def deliver_to_bear(title: str, body: str, tags: list[str]) -> bool:
-    """Create a Bear note, trying x-callback-url then AppleScript then file.
+    """Create a Bear note via x-callback-url; always write a markdown backup.
 
-    x-callback-url via `open` only works reliably when Bear is already running —
-    it returns exit code 0 immediately without waiting for Bear to process the URL.
-    When Bear is not running we skip straight to AppleScript, which launches the
-    app and waits for it to be ready before executing the command.
-
-    A markdown backup is always written regardless of Bear delivery outcome, so
-    the briefing is never silently lost if Bear fails at 06:00.
+    The markdown backup is the only thing that survives if Bear silently
+    drops the URL (e.g. shutting down for an OS update). It is written
+    regardless of whether the x-callback-url call appears to succeed.
     """
     if sys.platform != "darwin":
         logger.warning("Not running on macOS — falling back to markdown file")
         return _write_markdown_file(title, body, tags)
 
-    bear_running = _bear_is_running()
+    if not _bear_is_running():
+        logger.info("Bear not running — launching and waiting for it to settle")
+        if not _launch_bear_and_wait():
+            logger.warning("Could not bring Bear up; relying on markdown backup")
+            return _write_markdown_file(title, body, tags)
 
-    if bear_running and _deliver_via_xcallback(title, body, tags):
-        _write_markdown_file(title, body, tags)
-        return True
-
-    if not bear_running:
-        logger.info("Bear not running — skipping x-callback-url, using AppleScript directly")
-
-    if _deliver_via_applescript(title, body, tags):
-        _write_markdown_file(title, body, tags)
-        return True
-
-    logger.info("AppleScript failed, falling back to markdown file")
-    return _write_markdown_file(title, body, tags)
+    bear_ok = _deliver_via_xcallback(title, body, tags)
+    backup_ok = _write_markdown_file(title, body, tags)
+    if not bear_ok:
+        logger.warning("Bear x-callback-url returned an error — relying on markdown backup")
+    # Success means "today's briefing is preserved somewhere". The markdown
+    # backup is enough on its own; the 06:17 / 07:30 launchd pair already gives
+    # us a second attempt at Bear delivery on bad mornings.
+    return backup_ok
 
 
 def deliver_to_stdout(title: str, body: str, tags: list[str]) -> bool:
@@ -93,34 +130,6 @@ def _deliver_via_xcallback(title: str, body: str, tags: list[str]) -> bool:
         return False
     except Exception as e:
         logger.warning("x-callback-url failed: %s", e)
-        return False
-
-
-def _deliver_via_applescript(title: str, body: str, tags: list[str]) -> bool:
-    """Create a Bear note using AppleScript via osascript.
-
-    Text is passed as an argv argument rather than interpolated into the
-    script string, avoiding any AppleScript injection from feed content.
-    """
-    try:
-        tag_lines = "\n\n" + " ".join(f"#{tag}" for tag in tags)
-        full_text = f"# {title}\n\n{body}{tag_lines}"
-        script = 'on run argv\ntell application "Bear"\ncreate note with text (item 1 of argv)\nend tell\nend run'
-        result = subprocess.run(
-            ["osascript", "-e", script, "--", full_text],
-            capture_output=True, text=True, timeout=15,
-        )
-        if result.returncode == 0:
-            logger.info("Delivered to Bear via AppleScript: %s", title)
-            return True
-        else:
-            logger.warning("AppleScript code %d: %s", result.returncode, result.stderr)
-            return False
-    except subprocess.TimeoutExpired:
-        logger.warning("AppleScript timed out")
-        return False
-    except Exception as e:
-        logger.warning("AppleScript failed: %s", e)
         return False
 
 
