@@ -231,6 +231,31 @@ def run_pipeline(
     scored_result = score_items(items_to_score, scoring_config)
 
     scored_items = scored_result.get("items", [])
+    scoring_failed = scored_result.get("scoring_failed", False)
+
+    # Total scoring failure (e.g. Anthropic API overloaded across every chunk
+    # and every retry) — distinct from "Claude scored items but none above
+    # threshold". Do NOT mark items seen, so the next launchd fire retries
+    # the same items rather than seeing only the trickle that arrived since.
+    # If we're already past the last scheduled fire of the day (>= 07:00 ish,
+    # the 07:30 fallback), also push an error note to Bear so the user gets
+    # visibility instead of silence.
+    if scoring_failed:
+        reason = scored_result.get("failure_reason", "unknown")
+        logger.error("Scoring failed: %s — NOT marking items seen so next fire can retry.", reason)
+        if not dry_run:
+            _write_failure_marker(kind="scoring_failed", detail=reason)
+            # The 07:30 fire is the day's last automatic attempt. After ~07:00
+            # there is no more retry today, so escalate to Bear.
+            if datetime.now().hour >= 7:
+                logger.error("Past 07:00 — escalating scoring failure to Bear.")
+                _deliver_scoring_failure_to_bear(reason, len(new_items))
+                # Mark delivered so a manually-triggered later fire doesn't
+                # double-up the error note. A real briefing was not produced,
+                # but the user has been notified for the day.
+                mark_delivered_today(db_conn)
+        return False
+
     if not scored_items:
         logger.warning("Scoring returned no items above threshold")
         if not dry_run:
@@ -277,33 +302,77 @@ def run_pipeline(
     return success
 
 
-def _write_failure_marker() -> None:
-    """Write a visible FAILURE-<date>.md when every source returned zero items.
+_FAILURE_BODIES = {
+    "all_sources_zero": (
+        "Every source returned zero items. A healthy run gathers hundreds, "
+        "so this is almost always a network-layer block, not a quiet day.\n\n"
+        "Check first:\n"
+        "- `/tmp/cyberbriefing.err` for the actual collector errors\n"
+        "- Whether a Network Extension (TripMode, Little Snitch, VPN) "
+        "is dropping flows from the uv-managed python interpreter\n"
+        "- `log show --predicate 'process CONTAINS \"TripMode\"' "
+        "--start <fire time> --info` for sandbox / quarantine-resolver errors\n"
+    ),
+    "scoring_failed": (
+        "Every chunk sent to Claude for scoring failed end-to-end — typically "
+        "HTTP 529 Overloaded across all retries. Items were *not* marked as "
+        "seen, so the 07:30 launchd fallback (if this was the 06:15 fire) "
+        "will retry the same items with the recovered API.\n\n"
+        "Check first:\n"
+        "- `/tmp/cyberbriefing.log` for the exact API errors per chunk\n"
+        "- Anthropic status page if the same failure repeats across both fires\n"
+    ),
+}
+
+
+def _write_failure_marker(kind: str = "all_sources_zero", detail: str = "") -> None:
+    """Write a visible FAILURE-<date>.md when a fire goes sideways.
 
     Lives alongside the normal briefing backups in ~/cyberbriefing-output/, so
     a missing morning is loudly diagnosable rather than silently absent.
     """
     logger = logging.getLogger("cyberbriefing")
+    body = _FAILURE_BODIES.get(kind, _FAILURE_BODIES["all_sources_zero"])
     try:
         output_dir = Path(os.path.expanduser("~/cyberbriefing-output"))
         output_dir.mkdir(parents=True, exist_ok=True)
         date = datetime.now().strftime("%Y-%m-%d")
         path = output_dir / f"FAILURE-{date}.md"
-        path.write_text(
-            f"# Cyber Briefing FAILURE — {date}\n\n"
-            "Every source returned zero items. A healthy run gathers hundreds, "
-            "so this is almost always a network-layer block, not a quiet day.\n\n"
-            "Check first:\n"
-            "- `/tmp/cyberbriefing.err` for the actual collector errors\n"
-            "- Whether a Network Extension (TripMode, Little Snitch, VPN) "
-            "is dropping flows from the uv-managed python interpreter\n"
-            "- `log show --predicate 'process CONTAINS \"TripMode\"' "
-            "--start <fire time> --info` for sandbox / quarantine-resolver errors\n",
-            encoding="utf-8",
-        )
+        contents = f"# Cyber Briefing FAILURE — {date}\n\n{body}"
+        if detail:
+            contents += f"\n**Reported reason:** {detail}\n"
+        path.write_text(contents, encoding="utf-8")
         logger.error("Wrote failure marker: %s", path)
     except OSError as e:
         logger.error("Failed to write failure marker: %s", e)
+
+
+def _deliver_scoring_failure_to_bear(reason: str, new_item_count: int) -> bool:
+    """Send a short error note to Bear when the *last* scheduled fire of the
+    day still couldn't score. Gives the user visibility instead of silence.
+
+    Returns whether the note (or its markdown backup) was preserved.
+    """
+    logger = logging.getLogger("cyberbriefing")
+    date = datetime.now().strftime("%Y-%m-%d")
+    title = f"Cyber Briefing — {date} — SCORING FAILED"
+    body = (
+        f"# Cyber Briefing — {date}\n\n"
+        f"> **Scoring failed today.** {new_item_count} new items were gathered "
+        f"but Claude scoring could not complete.\n\n"
+        f"**Reason:** {reason or 'unknown'}\n\n"
+        "The full markdown backup of today's gathered items is not produced "
+        "in this state — only scored items are formatted. Check "
+        "`/tmp/cyberbriefing.log` for per-chunk API errors, and the "
+        "`FAILURE-{date}.md` file in `~/cyberbriefing-output/` for diagnosis hints.\n\n"
+        "*This note was delivered because the 07:30 fallback fire also failed — "
+        "no further automatic retry will run today.*\n"
+    ).replace("{date}", date)
+    try:
+        return deliver_to_bear(title, body, ["security/briefing/daily", "security/briefing/failure"])
+    except Exception as e:
+        logger.error("Failed to deliver scoring-failure note to Bear: %s", e)
+        return False
 
 
 def _maybe_prune(db_conn) -> None:
