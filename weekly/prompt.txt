@@ -11,9 +11,19 @@ Your job:
    under different headlines or from different sources. Merge those into one
    entry. When you merge, list every contributing story's id in "source_ids".
 
-2. RANK by importance. Use the "score" where present, and prioritise active
-   exploitation and critical items. Give higher priority to blogs, cheat
-   sheets, and new tool capabilities — these are especially valuable.
+2. RANK with a strong bias towards lasting, learnable material. This is a
+   weekly READING list, not a breaking-news wire. In order of preference:
+     a. Technical blogs, deep-dives, write-ups, research, and techniques.
+     b. New tools, new tool capabilities, cheat sheets, and how-to guides.
+     c. Genuinely new or novel developments — new attack classes, new
+        defensive approaches, new standards or practices worth learning.
+   Strongly prefer the above over routine breaking news. Incident reports,
+   one-off breach notifications, vendor PR, and "company X was hacked"
+   stories should rank LOW unless they teach a durable, transferable lesson.
+   Active-exploitation and critical items still earn a place when they carry
+   real actionable substance, but they are a secondary signal — do not let
+   them crowd out the blogs, tooling, and research. Use the "score" only as a
+   tie-breaker once you have applied this bias.
 
 3. SELECT the most important stories of the week — roughly the top 8 to 12.
 
