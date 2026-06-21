@@ -9,6 +9,9 @@ REPO="/Users/duncan/Developer/scripts/cyberbriefing"
 PLIST_INSTALLED="$HOME/Library/LaunchAgents/com.cyberbriefing.daily.plist"
 PLIST_REPO="$REPO/com.cyberbriefing.daily.plist"
 LABEL="com.cyberbriefing.daily"
+WEEKLY_PLIST_INSTALLED="$HOME/Library/LaunchAgents/com.cyberbriefing.weekly.plist"
+WEEKLY_PLIST_REPO="$REPO/com.cyberbriefing.weekly.plist"
+WEEKLY_LABEL="com.cyberbriefing.weekly"
 OUTPUT_DIR="$HOME/cyberbriefing-output"
 STATE_DB="$HOME/.cyberbriefing/state.db"
 TODAY="$(date +%Y-%m-%d)"
@@ -21,6 +24,47 @@ ok()   { printf "  \033[32m✓\033[0m %s\n" "$1"; PASS=$((PASS+1)); }
 warn() { printf "  \033[33m!\033[0m %s\n" "$1"; WARN=$((WARN+1)); }
 bad()  { printf "  \033[31m✗\033[0m %s\n" "$1"; FAIL=$((FAIL+1)); }
 hdr()  { printf "\n\033[1m%s\033[0m\n" "$1"; }
+
+# Verify a plist file is installed and matches the repo copy.
+# Args: <installed-path> <repo-path>
+check_plist_file() {
+    local installed="$1" repo="$2"
+    if [[ -f "$installed" ]]; then
+        ok "plist installed at $installed"
+        if cmp -s "$installed" "$repo"; then
+            ok "installed plist matches repo copy"
+        else
+            warn "installed plist DIFFERS from repo copy — re-install if you've edited it"
+        fi
+    else
+        bad "plist not installed at $installed"
+    fi
+}
+
+# Verify a launchd agent is loaded in the Aqua GUI context with a clean exit.
+# Args: <label> <error-log-path>
+check_agent() {
+    local label="$1" errlog="$2" print spawn last_exit
+    print=$(launchctl print "gui/$(id -u)/$label" 2>&1)
+    if [[ "$print" == *"Could not find service"* ]]; then
+        bad "agent $label not loaded — install it (see CLAUDE.md / install_launchd.sh)"
+        return
+    fi
+    ok "agent $label loaded in gui/$(id -u)"
+
+    spawn=$(printf '%s\n' "$print" | awk -F'= ' '/spawn type/ {print $2; exit}')
+    case "$spawn" in
+        "interactive (4)") ok "spawn type = interactive (4) — correct Aqua context" ;;
+        *) bad "spawn type = ${spawn:-unknown} — needs interactive (4); was the 4 May regression" ;;
+    esac
+
+    last_exit=$(printf '%s\n' "$print" | awk -F'= ' '/last exit code/ {print $2; exit}')
+    if [[ -n "$last_exit" && "$last_exit" != "0" ]]; then
+        warn "last exit code = $last_exit — check $errlog"
+    else
+        ok "last exit code = ${last_exit:-n/a}"
+    fi
+}
 
 hdr "1. TripMode (known cause of EBADF on 2026-05-15)"
 if pgrep -xq TripMode; then
@@ -44,39 +88,16 @@ else
     bad "06:10 daily wake is NOT scheduled — run: sudo pmset repeat wakeorpoweron MTWRFSU 06:10:00"
 fi
 
-hdr "4. launchd agent"
-if [[ -f "$PLIST_INSTALLED" ]]; then
-    ok "plist installed at $PLIST_INSTALLED"
-    if cmp -s "$PLIST_INSTALLED" "$PLIST_REPO"; then
-        ok "installed plist matches repo copy"
-    else
-        warn "installed plist DIFFERS from repo copy — re-install if you've edited it"
-    fi
-else
-    bad "plist not installed at $PLIST_INSTALLED"
-fi
+hdr "4. Daily launchd agent (06:15 / 07:30)"
+check_plist_file "$PLIST_INSTALLED" "$PLIST_REPO"
+check_agent "$LABEL" "/tmp/cyberbriefing.err"
 
-PRINT=$(launchctl print "gui/$(id -u)/$LABEL" 2>&1)
-if [[ "$PRINT" == *"Could not find service"* ]]; then
-    bad "agent not loaded — run install_launchd.sh"
-else
-    ok "agent loaded in gui/$(id -u)"
+hdr "5. Weekly launchd agent (Sunday 12:00 / 13:30)"
+check_plist_file "$WEEKLY_PLIST_INSTALLED" "$WEEKLY_PLIST_REPO"
+check_agent "$WEEKLY_LABEL" "/tmp/cyberbriefing-weekly.err"
+echo "    (No pmset wake needed — the weekly fires at midday when the Mac is awake.)"
 
-    SPAWN=$(printf '%s\n' "$PRINT" | awk -F'= ' '/spawn type/ {print $2; exit}')
-    case "$SPAWN" in
-        "interactive (4)") ok "spawn type = interactive (4) — correct Aqua context" ;;
-        *) bad "spawn type = ${SPAWN:-unknown} — needs interactive (4); was the 4 May regression" ;;
-    esac
-
-    LAST_EXIT=$(printf '%s\n' "$PRINT" | awk -F'= ' '/last exit code/ {print $2; exit}')
-    if [[ -n "$LAST_EXIT" && "$LAST_EXIT" != "0" ]]; then
-        warn "last exit code = $LAST_EXIT — check /tmp/cyberbriefing.err"
-    else
-        ok "last exit code = ${LAST_EXIT:-n/a}"
-    fi
-fi
-
-hdr "5. Files & secrets"
+hdr "6. Files & secrets"
 [[ -f "$REPO/.env" ]] && ok ".env present" || bad ".env MISSING in $REPO"
 if [[ -f "$REPO/.env" ]] && grep -q '^ANTHROPIC_API_KEY=' "$REPO/.env"; then
     ok "ANTHROPIC_API_KEY set in .env"
@@ -86,7 +107,7 @@ fi
 [[ -f "$STATE_DB" ]] && ok "state.db present" || bad "state.db missing at $STATE_DB"
 [[ -d "$OUTPUT_DIR" ]] && ok "output dir present" || warn "output dir missing — will be created on first run"
 
-hdr "6. Network resolution via uv python (the real TripMode test)"
+hdr "7. Network resolution via uv python (the real TripMode test)"
 PROBE=$(cd "$REPO" && /opt/homebrew/bin/uv run --quiet python -c "
 import socket, sys
 try:
@@ -103,7 +124,7 @@ else
     echo "    This is the exact failure mode TripMode causes. Allow uv/python in TripMode."
 fi
 
-hdr "7. Today's run status"
+hdr "8. Run status"
 TODAY_NOTE="$OUTPUT_DIR/Cyber Briefing _ $TODAY.md"
 TODAY_FAIL="$OUTPUT_DIR/FAILURE-$TODAY.md"
 [[ -f "$TODAY_NOTE" ]] && ok "today's briefing markdown exists: $(basename "$TODAY_NOTE")"
@@ -111,12 +132,19 @@ if [[ -f "$TODAY_FAIL" ]]; then
     warn "FAILURE marker present for today: $(basename "$TODAY_FAIL")"
 fi
 if [[ ! -f "$TODAY_NOTE" && ! -f "$TODAY_FAIL" ]]; then
-    echo "    No run yet today (expected if before 06:15 or this is a fresh day)."
+    echo "    No daily run yet today (expected if before 06:15 or this is a fresh day)."
+fi
+
+WEEKLY_NOTE=$(find "$OUTPUT_DIR" -maxdepth 1 -name 'Weekly Cyber Summary*.md' -mtime -7 2>/dev/null | head -1)
+if [[ -n "$WEEKLY_NOTE" ]]; then
+    ok "recent weekly summary markdown exists: $(basename "$WEEKLY_NOTE")"
+else
+    echo "    No weekly summary in the last 7 days (expected before the first Sunday run)."
 fi
 
 RECENT_FAILS=$(find "$OUTPUT_DIR" -maxdepth 1 -name 'FAILURE-*.md' -mtime -7 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$RECENT_FAILS" -gt 0 ]]; then
-    warn "$RECENT_FAILS FAILURE-*.md file(s) in the last 7 days"
+    warn "$RECENT_FAILS FAILURE-*.md file(s) in the last 7 days (daily + weekly)"
 fi
 
 hdr "Summary"
