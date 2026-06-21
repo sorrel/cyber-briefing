@@ -94,7 +94,7 @@ def _parse_britain_bullet(line: str, date_str: str) -> dict | None:
     }
 
 
-def parse_briefing_text(text: str, date: str) -> list[dict]:
+def parse_briefing_text(text: str, date_str: str) -> list[dict]:
     """Parse one daily briefing's markdown into a list of Story dicts.
 
     The Vulnerabilities section is excluded. Both standard '###' story blocks
@@ -112,14 +112,14 @@ def parse_briefing_text(text: str, date: str) -> list[dict]:
         if label == "Britain":
             for line in lines:
                 if line.lstrip().startswith("- "):
-                    story = _parse_britain_bullet(line, date)
+                    story = _parse_britain_bullet(line, date_str)
                     if story:
                         stories.append(story)
             return
         # Standard sections: split on '### '.
         blocks = re.split(r"^### ", body, flags=re.MULTILINE)
         for block in blocks[1:]:
-            story = _parse_standard_block(block, label, date)
+            story = _parse_standard_block(block, label, date_str)
             if story:
                 stories.append(story)
 
