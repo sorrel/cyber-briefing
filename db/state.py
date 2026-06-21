@@ -160,6 +160,32 @@ def mark_delivered_today(conn: sqlite3.Connection) -> None:
     update_scraper_run(conn, _DELIVERED_SLOT)
 
 
+# Slot used in scraper_runs to record successful weekly-summary delivery.
+# Re-uses the existing table, like the daily _briefing_delivered slot.
+_WEEKLY_DELIVERED_SLOT = "_weekly_delivered"
+
+
+def was_weekly_delivered_this_week(conn: sqlite3.Connection) -> bool:
+    """Return True if a weekly summary was already delivered this ISO week.
+
+    Used by the launchd 13:30 fallback fire to no-op when 12:00 succeeded.
+    """
+    row = conn.execute(
+        "SELECT last_checked FROM scraper_runs WHERE source = ?",
+        (_WEEKLY_DELIVERED_SLOT,),
+    ).fetchone()
+    if row is None:
+        return False
+    last = datetime.fromisoformat(row["last_checked"]).astimezone()
+    now = datetime.now().astimezone()
+    return last.isocalendar()[:2] == now.isocalendar()[:2]
+
+
+def mark_weekly_delivered(conn: sqlite3.Connection) -> None:
+    """Record that a weekly summary was successfully delivered just now."""
+    update_scraper_run(conn, _WEEKLY_DELIVERED_SLOT)
+
+
 def clear_source(conn: sqlite3.Connection, source: str) -> int:
     """Delete all seen_items records for a given source.
 
