@@ -32,6 +32,15 @@ uv run python briefing.py
 
 This project uses [uv](https://github.com/astral-sh/uv) for dependency management. Run `uv sync` if you need to install dependencies explicitly.
 
+## Weekly summary 🗓️
+
+Alongside the daily briefing, a companion job runs every **Sunday at midday** and rolls the week's briefings into a single **Weekly Cyber Summary** Bear note 📝. It reads the daily backups, skips the raw CVE list, and asks Claude to dedupe, rank and summarise the week's best reads — blogs, tools and new techniques — down to the top ~8–12 stories.
+
+```bash
+uv run python weekly_run.py --dry-run   # preview to terminal
+uv run python weekly_run.py             # real run → Bear
+```
+
 ## Scheduling with launchd
 
 The briefing runs as a long-running daemon (`daemon.py`) that sleeps until 06:00, runs the pipeline, then sleeps until the next day. launchd keeps it alive with `RunAtLoad` + `KeepAlive` — it starts at login and restarts automatically if it crashes.
