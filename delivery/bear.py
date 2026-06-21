@@ -22,7 +22,9 @@ import time
 from pathlib import Path
 from urllib.parse import quote
 
-MARKDOWN_RETENTION_DAYS = 7
+# 10 (not 7) so a slightly-late daily run or a DST shift never prunes
+# Monday's backup before the Sunday-midday weekly summary reads the week.
+MARKDOWN_RETENTION_DAYS = 10
 
 # How long to wait for a cold-launched Bear to settle before sending the URL.
 # `open` returns immediately when the OS hands the URL off, so if we fire too
