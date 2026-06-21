@@ -10,7 +10,7 @@ import argparse
 import logging
 import os
 import sys
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -38,12 +38,12 @@ def _load_scoring_config() -> dict:
         return {}
 
 
-def _write_failure(output_dir: Path, reason: str) -> None:
+def _write_failure(output_dir: Path, run_date: date, reason: str) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    today = date.today().isoformat()
-    path = output_dir / f"FAILURE-weekly-{today}.md"
+    iso = run_date.isoformat()
+    path = output_dir / f"FAILURE-weekly-{iso}.md"
     path.write_text(
-        f"# Weekly summary FAILED — {today}\n\n{reason}\n",
+        f"# Weekly summary FAILED — {iso}\n\n{reason}\n",
         encoding="utf-8",
     )
     logger.error("Wrote %s", path)
@@ -58,7 +58,7 @@ def run_weekly(output_dir: Path, run_date: date, dry_run: bool,
 
     stories, n_briefings, monday, sunday = read_week(output_dir, run_date)
     if not stories:
-        _write_failure(output_dir,
+        _write_failure(output_dir, run_date,
                        "No stories found in this week's briefing backups — "
                        "every daily backup was missing or empty.")
         return 1
@@ -66,7 +66,7 @@ def run_weekly(output_dir: Path, run_date: date, dry_run: bool,
     try:
         summarised = summarise_week(stories, config)
     except RuntimeError as e:
-        _write_failure(output_dir, f"Claude summarisation failed: {e}")
+        _write_failure(output_dir, run_date, f"Claude summarisation failed: {e}")
         return 1
 
     title, body, tags = format_weekly(

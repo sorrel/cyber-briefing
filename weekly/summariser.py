@@ -88,24 +88,39 @@ def summarise_week(stories: list[dict], config: dict | None = None) -> list[dict
         + json.dumps(payload, indent=None)
     )
 
-    try:
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=model,
-            max_tokens=MAX_TOKENS,
-            system=[{
-                "type": "text",
-                "text": system_prompt,
-                "cache_control": {"type": "ephemeral"},
-            }],
-            messages=[{"role": "user", "content": user_message}],
-        )
-    except anthropic.APIError as e:
-        raise RuntimeError(f"Anthropic API call failed: {e}") from e
+    client = anthropic.Anthropic(api_key=api_key)
 
-    response_text = "".join(
-        block.text for block in response.content if block.type == "text"
-    )
+    last_exc: BaseException | None = None
+    response_text: str = ""
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=MAX_TOKENS,
+                system=[{
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }],
+                messages=[{"role": "user", "content": user_message}],
+            )
+            response_text = "".join(
+                block.text for block in response.content if block.type == "text"
+            )
+            break  # Success — exit the retry loop.
+        except (anthropic.APIError, anthropic.APIConnectionError) as e:
+            last_exc = e
+            if attempt < max_attempts:
+                logger.warning(
+                    "Claude API call failed on attempt %d/%d (%s) — retrying",
+                    attempt, max_attempts, e,
+                )
+            else:
+                raise RuntimeError(
+                    f"Anthropic API call failed after {max_attempts} attempts: {e}"
+                ) from e
+
     try:
         summarised = parse_response(response_text, stories)
     except ValueError as e:
