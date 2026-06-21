@@ -1,0 +1,39 @@
+# Dependabot version updates.
+#
+# Keeps Python dependencies (uv) and GitHub Actions current by opening PRs when
+# newer versions are released. Dependabot *security* updates and *grouped*
+# security updates are enabled separately in the repository settings — this
+# file adds the proactive version-bump coverage on top.
+#
+# Updates are grouped into a single weekly PR per ecosystem to keep the noise
+# down (mirrors the grouped-security-updates preference).
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/London"
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
