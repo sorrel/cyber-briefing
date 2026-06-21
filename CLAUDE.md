@@ -124,72 +124,18 @@ tail -f /tmp/cyberbriefing.log
 tail -f /tmp/cyberbriefing.err
 ```
 
-## Weekly summary
+## Weekly summary 🗓️
 
-A separate pipeline that runs every Sunday to produce a curated digest of the week's cybersecurity coverage. It reads the daily markdown backups from `~/cyberbriefing-output/`, strips the Vulnerabilities section (raw CVE lists add noise without adding insight), and sends the curated stories to Claude to deduplicate, rank, and summarise. The output is a `Weekly Cyber Summary — <Mon> to <Sun>` Bear note tagged `security/briefing/weekly`.
-
-Markdown backup retention was raised from 7 to 10 days so that Sunday's run always sees the full seven-day window, even if the run is delayed.
-
-### Running it
+A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and rolls the week's daily briefings into one Bear note — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories. (Backup retention was raised 7 → 10 days so Sunday always sees the full week.)
 
 ```bash
-# Always use uv
-uv run python weekly_run.py --dry-run   # Full pipeline → stdout (no state changes)
-uv run python weekly_run.py             # Real run → Bear Notes
+uv run python weekly_run.py --dry-run   # → stdout, no state changes
+uv run python weekly_run.py             # → Bear Notes
 ```
 
-### Architecture
-
-```
-weekly_run.py        ← Entry point (CLI: --dry-run)
-weekly/
-  reader.py          ← Reads daily backup .md files; strips Vulnerabilities section
-  summariser.py      ← Claude API call; dedupes, ranks, summarises stories
-  prompt.txt         ← Claude summarisation rubric (edit me to tune output)
-  formatter.py       ← Converts summarised stories → weekly markdown note
-delivery/
-  bear.py            ← Reused unchanged; delivers note + writes markdown backup
-db/
-  state.py           ← Reused; was_weekly_delivered_this_week() / mark_weekly_delivered()
-```
-
-### Pipeline flow
-
-1. **Read**: `reader.py` collects all daily `.md` backups from `~/cyberbriefing-output/` for the past 7 days, excluding the Vulnerabilities section
-2. **Summarise**: `summariser.py` sends curated stories to Claude; Claude deduplicates, ranks, and produces 8–12 top stories with a 1–2 sentence why-it-matters summary each
-3. **Format**: `formatter.py` builds the weekly note — title `Weekly Cyber Summary — <Mon> to <Sun>`, opening line with story/source counts, `###` per story with source links, most-to-least important order
-4. **Deliver**: Bear Notes (real run) or stdout (`--dry-run`); markdown backup always written to `~/cyberbriefing-output/`
-5. **Mark delivered**: `state.db` updated so the 13:30 fallback is a no-op
-
-### Failure mode
-
-If the week's daily backups are empty, or if the Claude API call fails, `weekly_run.py` writes `FAILURE-weekly-<YYYY-MM-DD>.md` to `~/cyberbriefing-output/` and exits non-zero so launchd records the failure.
-
-### Scheduling
-
-`com.cyberbriefing.weekly.plist` — fires on Sundays only. Two slots:
-
-- **12:00** — primary fire.
-- **13:30** — idempotent fallback. `weekly_run.py` checks `state.db` (`was_weekly_delivered_this_week()`) and exits cleanly if this week's summary has already been delivered.
-
-The plist uses the same hardening as the daily job: `LimitLoadToSessionType = Aqua`, `ProcessType = Interactive`, `RunAtLoad = false`, and `caffeinate -is`. No `pmset` wake is needed — at midday on a Sunday the Mac mini is already in a full user-session wake state.
-
-```bash
-# Install (or re-install after plist edits)
-launchctl bootout gui/$(id -u)/com.cyberbriefing.weekly 2>/dev/null
-cp com.cyberbriefing.weekly.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.weekly.plist
-
-# Manual fire (e.g. for testing)
-launchctl kickstart -k gui/$(id -u)/com.cyberbriefing.weekly
-
-# Inspect context (confirm Aqua / Interactive)
-launchctl print gui/$(id -u)/com.cyberbriefing.weekly
-
-# Logs
-tail -f /tmp/cyberbriefing-weekly.log
-tail -f /tmp/cyberbriefing-weekly.err
-```
+- **Code:** `weekly_run.py` + the `weekly/` package (`reader.py`, `summariser.py`, `prompt.txt`, `formatter.py`); reuses `delivery/bear.py` and `db/state.py`.
+- **Scheduling:** `com.cyberbriefing.weekly.plist` — same Aqua/Interactive/`caffeinate` hardening as the daily, no `pmset` needed at midday. Install/inspect like the daily plist (label `com.cyberbriefing.weekly`); logs at `/tmp/cyberbriefing-weekly.{log,err}`.
+- **Failure:** empty week or Claude failure → `FAILURE-weekly-<date>.md` + non-zero exit; the 13:30 fallback retries.
 
 ## Bear delivery bug — investigation and fix (30 April 2026)
 
