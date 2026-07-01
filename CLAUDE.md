@@ -2,7 +2,7 @@
 
 ## What this is
 
-A Python pipeline that runs daily to produce a prioritised cybersecurity briefing, delivered to Bear Notes. It gathers from 17+ sources (APIs, RSS feeds, scrapers), scores each item using Claude, and formats a tiered markdown document.
+A Python pipeline that runs daily to produce a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel (configurable). It gathers from 17+ sources (APIs, RSS feeds, scrapers), scores each item using Claude, and formats a tiered markdown document.
 
 ## Deployment environment
 
@@ -37,7 +37,11 @@ collectors/
   ico_scraper.py     ← ICO enforcement actions scraper (weekly)
 delivery/
   formatter.py       ← Converts scored items → markdown (title, body, tags)
-  bear.py            ← Delivers to Bear Notes via x-callback-url; always writes a markdown backup to ~/cyberbriefing-output/
+  dispatch.py        ← Routes (title, body, tags) to the configured delivery.method; always writes the markdown backup
+  bear.py            ← Bear Notes via x-callback-url (Bear-only; backup lives in dispatch/backup now)
+  slack.py           ← Slack chat.postMessage delivery (native message + threaded overflow)
+  slack_format.py    ← Converts briefing markdown → Slack Block Kit groups
+  backup.py          ← Always-on markdown backup to ~/cyberbriefing-output/ (read by the weekly pipeline)
 db/
   state.py           ← SQLite at ~/.cyberbriefing/state.db; tracks seen items + scraper schedules
 ```
@@ -48,7 +52,7 @@ db/
 2. **Score**: Up to 150 most-recent unseen items sent to Claude with prompt.txt
 3. **Cluster**: Items sharing a cluster_id are collapsed (highest score wins)
 4. **Format**: Tiered markdown — Critical / Notable / Radar / Britain
-5. **Deliver**: Bear Notes (real run) or stdout (--dry-run)
+5. **Deliver**: via `delivery.method` — Bear Notes or Slack (real run) or stdout (--dry-run); a markdown backup is always written
 6. **Mark seen**: All gathered items written to state.db
 
 ## Tiers
@@ -85,6 +89,7 @@ Edit `config.yaml`:
 | Max items sent to Claude | `config.yaml` → `scoring.max_score_input` |
 | Scoring rubric / source guidance | `prioritiser/prompt.txt` |
 | Section headers / render style | `delivery/formatter.py` |
+| Delivery target (bear / slack / stdout / markdown_file) | `config.yaml` → `delivery.method` (+ `delivery.slack.channel` for Slack) |
 
 ## Scheduling
 
@@ -136,6 +141,30 @@ uv run python weekly_run.py             # → Bear Notes
 - **Code:** `weekly_run.py` + the `weekly/` package (`reader.py`, `summariser.py`, `prompt.txt`, `formatter.py`); reuses `delivery/bear.py` and `db/state.py`.
 - **Scheduling:** `com.cyberbriefing.weekly.plist` — same Aqua/Interactive/`caffeinate` hardening as the daily, no `pmset` needed at midday. Install/inspect like the daily plist (label `com.cyberbriefing.weekly`); logs at `/tmp/cyberbriefing-weekly.{log,err}`.
 - **Failure:** empty week or Claude failure → `FAILURE-weekly-<date>.md` + non-zero exit; the 13:30 fallback retries.
+
+## Slack delivery
+
+Set `config.yaml` → `delivery.method: slack` to deliver to a Slack channel
+instead of Bear. Applies to both the daily (`briefing.py`) and weekly
+(`weekly_run.py`) pipelines, which both route through `delivery/dispatch.py`.
+
+- **Auth:** `SLACK_BOT_TOKEN` (env, via the 1Password local env file). Only
+  the `chat:write` bot scope is needed; the bot must be invited to the channel.
+- **Channel:** `delivery.slack.channel` in `config.yaml` (a channel ID; never
+  hardcoded in Python).
+- **Rendering:** `delivery/slack_format.py` converts the briefing markdown to
+  Slack Block Kit — note Slack's `*bold*` / `_italic_` is the inverse of our
+  markdown's `*italic*`, which the converter remaps. Long briefings overflow
+  into threaded replies under the parent message.
+- **Backup invariant:** `delivery/dispatch.py` always writes the
+  `~/cyberbriefing-output/` markdown backup for every method except `stdout`,
+  because `weekly/reader.py` reads those backups. Bear/Slack posting is
+  best-effort; the backup is the durable artifact and the success signal.
+- **Secrets caveat:** the 1Password local env file prompts for authorization
+  on first read after 1Password *locks*, and its FIFO does not support
+  concurrent readers. For the unattended launchd fires to obtain the token,
+  1Password must stay unlocked. The daily and weekly fire windows do not
+  overlap, so the single-reader limit is not a concern.
 
 ## Bear delivery bug — investigation and fix (30 April 2026)
 
@@ -207,10 +236,12 @@ The 4 May plist setup (Aqua, Interactive, caffeinate, cron-style schedule, idemp
 
 ## Secrets
 
-Uses `.env` file (gitignored). Required keys:
+Uses a `.env` file (gitignored), sourced via the 1Password local env file
+(values streamed on read; standard `load_dotenv` — no `op run`). Required keys:
 - `ANTHROPIC_API_KEY` — for Claude scoring
 - `HACKERONE_USERNAME` / `HACKERONE_TOKEN` — optional, for HackerOne collector
 - `GITHUB_TOKEN` — optional, for GitHub Advisories collector
+- `SLACK_BOT_TOKEN` — optional, only for `delivery.method: slack` (Slack app bot token, `chat:write` scope)
 
 ## State DB
 

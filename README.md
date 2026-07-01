@@ -74,9 +74,27 @@ Edit `config.yaml` to:
 - Adjust scoring weights and thresholds
 - Add new RSS feeds (just add an entry under `sources.rss_feeds`)
 - Change the target number of items per briefing
-- Switch delivery method (bear, stdout, or markdown_file)
+- Switch delivery method (bear, slack, stdout, or markdown_file)
 
 Edit `prioritiser/prompt.txt` to tune the AI scoring. This is where you adjust priorities without touching code.
+
+## Slack delivery
+
+Set `delivery.method: slack` in `config.yaml` to post the briefing to a Slack
+channel instead of Bear. Both the daily briefing and the weekly summary honour
+this setting; a dated markdown backup is still written to
+`~/cyberbriefing-output/` regardless.
+
+One-time setup:
+
+1. Create a Slack app, add the **`chat:write`** bot scope, and install it to
+   your workspace.
+2. `/invite` the bot into the target channel.
+3. Put the channel ID in `config.yaml` under `delivery.slack.channel`.
+4. Provide `SLACK_BOT_TOKEN` via your `.env` (see below).
+
+The briefing is rendered as a native Slack message; anything longer than
+Slack's per-message limit is posted as threaded replies under it.
 
 ## CLI options
 
@@ -95,6 +113,7 @@ Edit `prioritiser/prompt.txt` to tune the AI scoring. This is where you adjust p
 | `HACKERONE_USERNAME` + `HACKERONE_TOKEN` | HackerOne Settings | Optional |
 | `NVD_API_KEY` | nvd.nist.gov | Optional (higher rate limits) |
 | `GITHUB_TOKEN` | GitHub Settings | Optional (for advisories) |
+| `SLACK_BOT_TOKEN` | Slack app (chat:write) | Optional (only for `delivery.method: slack`) |
 
 The tool degrades gracefully. If a key is missing, that source is skipped and logged as a warning.
 
