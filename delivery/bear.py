@@ -8,10 +8,9 @@ Delivery strategy:
   1. If Bear is running, send the URL straight away.
   2. If Bear is not running, launch it, wait until the process has been
      alive long enough to be past its startup race, then send the URL.
-  3. Always write a markdown backup so the briefing is never lost — `open`
-     returns 0 the instant the OS accepts the URL handoff, so we cannot
-     tell if Bear actually consumed it (e.g. if Bear was shutting down for
-     a macOS update, as happened on 16 May 2026).
+
+The markdown backup is written by the dispatcher (delivery/dispatch.py) for
+every delivery method, so this module is Bear-only.
 """
 
 import logging
@@ -19,8 +18,6 @@ import subprocess
 import sys
 import time
 from urllib.parse import quote
-
-from delivery.backup import write_markdown_backup
 
 # How long to wait for a cold-launched Bear to settle before sending the URL.
 # `open` returns immediately when the OS hands the URL off, so if we fire too
@@ -65,27 +62,22 @@ def _launch_bear_and_wait() -> bool:
 
 
 def deliver_to_bear(title: str, body: str, tags: list[str]) -> bool:
-    """Create a Bear note via x-callback-url; always write a markdown backup.
+    """Create a Bear note via x-callback-url. Returns True iff Bear accepted it.
 
-    The markdown backup is the only thing that survives if Bear silently
-    drops the URL (e.g. shutting down for an OS update). It is written
-    regardless of whether the x-callback-url call appears to succeed.
+    The markdown backup is written by the dispatcher (delivery/dispatch.py) for
+    every method, so this function is now Bear-only.
     """
     if sys.platform != "darwin":
-        logger.warning("Not running on macOS — falling back to markdown file")
-        return write_markdown_backup(title, body, tags)
+        logger.warning("Not running on macOS — cannot deliver to Bear")
+        return False
 
     if not _bear_is_running():
         logger.info("Bear not running — launching and waiting for it to settle")
         if not _launch_bear_and_wait():
-            logger.warning("Could not bring Bear up; relying on markdown backup")
-            return write_markdown_backup(title, body, tags)
+            logger.warning("Could not bring Bear up")
+            return False
 
-    bear_ok = _deliver_via_xcallback(title, body, tags)
-    backup_ok = write_markdown_backup(title, body, tags)
-    if not bear_ok:
-        logger.warning("Bear x-callback-url returned an error — relying on markdown backup")
-    return backup_ok
+    return _deliver_via_xcallback(title, body, tags)
 
 
 def deliver_to_stdout(title: str, body: str, tags: list[str]) -> bool:
