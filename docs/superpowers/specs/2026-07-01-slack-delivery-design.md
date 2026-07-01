@@ -35,7 +35,7 @@ delivery:
   bear_tag: "security/briefing/daily"
   markdown_output_dir: "~/cyberbriefing-output"
   slack:
-    channel: "C0XXXXXXX"  # channel ID (preferred) or "#name"; the bot must be a member
+    channel: "C0BE6PB6S75"  # channel ID (stable across renames); the bot must be a member
 ```
 
 - **Token:** `SLACK_BOT_TOKEN`, read from the environment after `load_dotenv()`.
@@ -206,10 +206,15 @@ does not support concurrent readers. For the unattended launchd fires
 stay unlocked. The daily and weekly fire windows do not overlap, so the
 single-reader limit is not a concern.
 
-## 10. Open questions
+## 10. Resolved decisions
 
-- Channel value: recommend a channel **ID** (stable across renames) over
-  `#name`. Confirm which the user will use.
-- Whether to keep `markdown_file` as a first-class method now that the
-  dispatcher writes the backup for every method anyway (it becomes "backup only,
-  no channel"). Low stakes; keep for now.
+- **Channel:** `C0BE6PB6S75`, stored in `config.yaml` under
+  `delivery.slack.channel` — in config, never in code. (Confirmed 2026-07-01.)
+- **`markdown_file` method:** kept as a first-class method (it becomes "backup
+  only, no channel" now that the dispatcher writes the backup for every method).
+- **Backup location:** unchanged — `~/cyberbriefing-output/`, filename = the
+  sanitised note title (e.g. `Cyber Briefing _ 2026-07-01.md`), pruned after 10
+  days. This is the directory `weekly/reader.py` reads.
+- **`markdown_output_dir` config key:** stays **inert** (as today — it is read
+  nowhere; the path is hardcoded in `bear.py`, `briefing.py`, `weekly_run.py`,
+  and `weekly/reader.py`). Wiring it up is out of scope for this change.
