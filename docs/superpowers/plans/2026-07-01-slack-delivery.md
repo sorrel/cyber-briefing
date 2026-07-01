@@ -1,6 +1,6 @@
 # Slack Delivery Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add Slack as a selectable `delivery.method` (alongside Bear) for both the daily and weekly pipelines, rendering the briefing as a native Slack message with threaded overflow.
 
@@ -35,7 +35,7 @@ Pure refactor — moves the backup writer out of `bear.py` so every delivery met
 - Produces: `delivery.backup.write_markdown_backup(title: str, body: str, tags: list[str]) -> bool`; `delivery.backup.MARKDOWN_RETENTION_DAYS: int = 10`; `delivery.backup._prune_old_markdown_files(output_dir: Path) -> None`.
 - Consumes: nothing from other tasks.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_backup.py`:
 
@@ -80,12 +80,12 @@ def test_prunes_files_older_than_retention(tmp_path, monkeypatch):
     assert (out / "Cyber Briefing _ 2026-07-01.md").exists()  # em-dash sanitised to _
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_backup.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'delivery.backup'`.
 
-- [ ] **Step 3: Create `delivery/backup.py`**
+- [x] **Step 3: Create `delivery/backup.py`**
 
 ```python
 """Markdown backup writer for delivered briefings.
@@ -142,12 +142,12 @@ def _prune_old_markdown_files(output_dir: Path) -> None:
             logger.warning("Failed to prune %s: %s", path, e)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_backup.py -v`
 Expected: PASS (2 passed).
 
-- [ ] **Step 5: Slim `delivery/bear.py` to delegate**
+- [x] **Step 5: Slim `delivery/bear.py` to delegate**
 
 In `delivery/bear.py`, change the imports at the top of the file — remove `os` and `Path` (only the backup functions used them) and add the backup import:
 
@@ -205,12 +205,12 @@ def deliver_to_bear(title: str, body: str, tags: list[str]) -> bool:
 
 Delete the now-duplicated `_write_markdown_file` and `_prune_old_markdown_files` functions from `bear.py` entirely.
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `uv run pytest -q`
 Expected: all tests pass (the existing suite plus `tests/test_backup.py`).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add delivery/backup.py delivery/bear.py tests/test_backup.py
@@ -234,7 +234,7 @@ A pure, well-tested function that turns the briefing markdown into ordered Slack
   - Constants `MAX_BLOCKS_PER_MESSAGE = 45`, `MAX_SECTION_CHARS = 2900`, `MAX_HEADER_CHARS = 150`.
 - Consumes: nothing from other tasks.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_slack_format.py`:
 
@@ -323,12 +323,12 @@ def test_britain_bullet_converts_link_and_italic():
     assert "_ICO_" in joined
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_slack_format.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'delivery.slack_format'`.
 
-- [ ] **Step 3: Create `delivery/slack_format.py`**
+- [x] **Step 3: Create `delivery/slack_format.py`**
 
 ```python
 """Convert the briefing's Bear-flavoured markdown into Slack Block Kit.
@@ -447,12 +447,12 @@ def markdown_to_block_groups(title: str, body: str) -> list[list[dict]]:
     return _chunk(blocks, MAX_BLOCKS_PER_MESSAGE)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_slack_format.py -v`
 Expected: PASS (all tests green).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add delivery/slack_format.py tests/test_slack_format.py
@@ -473,7 +473,7 @@ Posts the block groups to a channel via `chat.postMessage`, threading overflow u
 - Consumes: `delivery.slack_format.markdown_to_block_groups`.
 - Produces: `delivery.slack.deliver_to_slack(title: str, body: str, tags: list[str], slack_cfg: dict) -> bool` — returns True iff the parent message posted; thread-reply failures are logged, not fatal. Reads `SLACK_BOT_TOKEN` from the environment and `channel` from `slack_cfg`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_slack_client.py`:
 
@@ -571,12 +571,12 @@ def test_rate_limit_then_success(monkeypatch):
     assert seq == []  # both responses consumed → it retried
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_slack_client.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'delivery.slack'`.
 
-- [ ] **Step 3: Create `delivery/slack.py`**
+- [x] **Step 3: Create `delivery/slack.py`**
 
 ```python
 """Deliver a briefing to a Slack channel via chat.postMessage.
@@ -667,12 +667,12 @@ def _post_message(token: str, channel: str, fallback_text: str,
     return None
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_slack_client.py -v`
 Expected: PASS (all tests green).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add delivery/slack.py tests/test_slack_client.py
@@ -693,7 +693,7 @@ Routes `(title, body, tags)` to the configured method and always writes the mark
 - Consumes: `delivery.backup.write_markdown_backup`, `delivery.bear.deliver_to_bear`, `delivery.bear.deliver_to_stdout`, `delivery.slack.deliver_to_slack`.
 - Produces: `delivery.dispatch.deliver(delivery_cfg: dict, title: str, body: str, tags: list[str]) -> bool`. Returns True if the briefing was preserved (backup written); `stdout` returns its own result and writes no backup.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_dispatch.py`:
 
@@ -768,12 +768,12 @@ def test_none_config_defaults_to_bear(monkeypatch):
     assert calls["bear"] == 1
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_dispatch.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'delivery.dispatch'`.
 
-- [ ] **Step 3: Create `delivery/dispatch.py`**
+- [x] **Step 3: Create `delivery/dispatch.py`**
 
 ```python
 """Route a formatted briefing to the configured delivery channel.
@@ -820,12 +820,12 @@ def deliver(delivery_cfg: dict, title: str, body: str, tags: list[str]) -> bool:
     return write_markdown_backup(title, body, tags)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_dispatch.py -v`
 Expected: PASS (all tests green).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add delivery/dispatch.py tests/test_dispatch.py
@@ -845,7 +845,7 @@ Expose the Slack option in config and document the token.
 **Interfaces:**
 - Produces: `config["delivery"]["slack"]["channel"]` and the `SLACK_BOT_TOKEN` env var contract consumed by Tasks 3–4/6–7.
 
-- [ ] **Step 1: Edit `config.yaml`**
+- [x] **Step 1: Edit `config.yaml`**
 
 Replace the current `delivery:` block:
 ```yaml
@@ -864,7 +864,7 @@ delivery:
     channel: "C0BE6PB6S75"   # channel ID; the bot must be invited to this channel
 ```
 
-- [ ] **Step 2: Edit `.env.example`**
+- [x] **Step 2: Edit `.env.example`**
 
 Replace the whole file with:
 ```
@@ -889,12 +889,12 @@ GITHUB_TOKEN=your_github_personal_access_token
 SLACK_BOT_TOKEN=xoxb-your-slack-bot-token
 ```
 
-- [ ] **Step 3: Sanity-check config parses**
+- [x] **Step 3: Sanity-check config parses**
 
 Run: `uv run python -c "import yaml; print(yaml.safe_load(open('config.yaml'))['delivery']['slack']['channel'])"`
 Expected: prints `C0BE6PB6S75`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add config.yaml .env.example
@@ -915,7 +915,7 @@ The daily pipeline now delivers via `deliver(...)`; Bear stops writing its own b
 - Consumes: `delivery.dispatch.deliver`, `delivery.bear.deliver_to_stdout`.
 - Produces: renamed `briefing._deliver_scoring_failure(delivery_cfg: dict, reason: str, new_item_count: int) -> bool`.
 
-- [ ] **Step 1: Slim `deliver_to_bear` in `delivery/bear.py`**
+- [x] **Step 1: Slim `deliver_to_bear` in `delivery/bear.py`**
 
 Remove the `from delivery.backup import write_markdown_backup` import added in Task 1 (Bear no longer writes the backup — the dispatcher does). Then replace `deliver_to_bear` with:
 
@@ -939,7 +939,7 @@ def deliver_to_bear(title: str, body: str, tags: list[str]) -> bool:
     return _deliver_via_xcallback(title, body, tags)
 ```
 
-- [ ] **Step 2: Rewire delivery in `briefing.py`**
+- [x] **Step 2: Rewire delivery in `briefing.py`**
 
 Change the delivery import line (currently `from delivery.bear import deliver_to_bear, deliver_to_stdout`) to:
 ```python
@@ -955,7 +955,7 @@ Replace the Stage 3 delivery block (the `if dry_run: … else: delivery_method =
         success = deliver(config.get("delivery", {}), title, body, tags)
 ```
 
-- [ ] **Step 3: Route the scoring-failure escalation through the dispatcher**
+- [x] **Step 3: Route the scoring-failure escalation through the dispatcher**
 
 Rename `_deliver_scoring_failure_to_bear` to `_deliver_scoring_failure` and give it the delivery config; replace its final `deliver_to_bear(...)` call:
 
@@ -995,17 +995,17 @@ Update its call site inside `run_pipeline` (in the `if scoring_failed:` branch) 
                 _deliver_scoring_failure(config.get("delivery", {}), reason, len(new_items))
 ```
 
-- [ ] **Step 4: Verify the daily pipeline still runs and imports cleanly**
+- [x] **Step 4: Verify the daily pipeline still runs and imports cleanly**
 
 Run: `uv run python briefing.py --dry-run`
 Expected: runs the pipeline and prints a briefing (or "No new items…") to stdout — dry-run uses `deliver_to_stdout`, so no Bear/Slack call and no state changes.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `uv run pytest -q`
 Expected: all tests pass (`test_briefing.py` imports `briefing` — confirms the rewire imports cleanly).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add briefing.py delivery/bear.py
@@ -1026,7 +1026,7 @@ The Sunday weekly summary honours `delivery.method` too.
 - Consumes: `delivery.dispatch.deliver`, `delivery.bear.deliver_to_stdout`.
 - Produces: `weekly_run.run_weekly(output_dir, run_date, dry_run, config, conn, delivery_cfg=None) -> int`; `weekly_run._load_delivery_config() -> dict`.
 
-- [ ] **Step 1: Update the failing test first**
+- [x] **Step 1: Update the failing test first**
 
 In `tests/test_weekly_pipeline.py`, in `test_run_weekly_real_marks_delivered`, replace the `deliver_to_bear` monkeypatch with a `deliver` monkeypatch (note the dispatcher's leading `delivery_cfg` arg):
 
@@ -1037,12 +1037,12 @@ In `tests/test_weekly_pipeline.py`, in `test_run_weekly_real_marks_delivered`, r
     )
 ```
 
-- [ ] **Step 2: Run the weekly tests to verify the real-delivery test now fails**
+- [x] **Step 2: Run the weekly tests to verify the real-delivery test now fails**
 
 Run: `uv run pytest tests/test_weekly_pipeline.py -v`
 Expected: FAIL — `test_run_weekly_real_marks_delivered` errors with `AttributeError: <module 'weekly_run'> does not have the attribute 'deliver'` (the module still imports `deliver_to_bear`, not `deliver`). The other three weekly tests still pass.
 
-- [ ] **Step 3: Rewire `weekly_run.py`**
+- [x] **Step 3: Rewire `weekly_run.py`**
 
 Change the delivery import (currently `from delivery.bear import deliver_to_bear, deliver_to_stdout`) to:
 ```python
@@ -1081,22 +1081,22 @@ In `main`, load the delivery config and pass it through:
     return run_weekly(OUTPUT_DIR, date.today(), args.dry_run, config, conn, delivery_cfg)
 ```
 
-- [ ] **Step 4: Run the weekly tests to verify they pass**
+- [x] **Step 4: Run the weekly tests to verify they pass**
 
 Run: `uv run pytest tests/test_weekly_pipeline.py -v`
 Expected: PASS (all four). The real-delivery test's patched `weekly_mod.deliver` is now what `run_weekly` calls.
 
-- [ ] **Step 5: Verify the weekly pipeline imports and runs in dry-run**
+- [x] **Step 5: Verify the weekly pipeline imports and runs in dry-run**
 
 Run: `uv run python weekly_run.py --dry-run`
 Expected: prints a weekly summary to stdout (or writes a `FAILURE-weekly-…` marker if there are no backups for the week) — either way, no exception and no Bear/Slack call.
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `uv run pytest -q`
 Expected: all tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add weekly_run.py tests/test_weekly_pipeline.py
@@ -1115,7 +1115,7 @@ Document the Slack option, the new modules, and the secrets mechanism.
 
 **Interfaces:** none (docs only).
 
-- [ ] **Step 1: Update `README.md`**
+- [x] **Step 1: Update `README.md`**
 
 1. The Configuration bullet — replace `Switch delivery method (bear, stdout, or markdown_file)` with:
    ```
@@ -1148,7 +1148,7 @@ Document the Slack option, the new modules, and the secrets mechanism.
    Slack's per-message limit is posted as threaded replies under it.
    ```
 
-- [ ] **Step 2: Update `CLAUDE.md`**
+- [x] **Step 2: Update `CLAUDE.md`**
 
 1. In "## What this is", change `delivered to Bear Notes` to `delivered to Bear Notes or a Slack channel (configurable)`.
 
@@ -1210,12 +1210,12 @@ Document the Slack option, the new modules, and the secrets mechanism.
    (values streamed on read; standard `load_dotenv` — no `op run`). Required keys:
    ```
 
-- [ ] **Step 3: Verify docs render (no broken tables/fences)**
+- [x] **Step 3: Verify docs render (no broken tables/fences)**
 
 Run: `uv run python -c "import pathlib; [print(p, 'ok') for p in ['README.md','CLAUDE.md'] if pathlib.Path(p).read_text()]"`
 Expected: prints `README.md ok` and `CLAUDE.md ok` (sanity that both files are readable; visually skim the diff for fence/table alignment).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md CLAUDE.md
@@ -1226,7 +1226,7 @@ git commit -m "docs: document slack delivery option and delivery dispatcher" -m 
 
 ## Final verification
 
-- [ ] Run the whole suite: `uv run pytest -q` — expected: all green.
-- [ ] Daily dry-run: `uv run python briefing.py --dry-run` — prints to stdout, no state changes.
-- [ ] Weekly dry-run: `uv run python weekly_run.py --dry-run` — prints or writes a weekly FAILURE marker; no exception.
+- [x] Run the whole suite: `uv run pytest -q` — 106 passed (1 Jul 2026).
+- [x] Daily dry-run: `uv run python briefing.py --dry-run` — green; full tiered briefing to stdout, only the expected optional-token (HackerOne/GitHub) skips, no state changes.
+- [x] Weekly dry-run: `uv run python weekly_run.py --dry-run` — empty-week path confirmed: `~/cyberbriefing-output/` had 0 daily backups, so it read 0 stories, wrote `FAILURE-weekly-<date>.md`, exited non-zero, no exception. Happy path (summarise → format → dispatch) therefore covered only by unit tests, not this run.
 - [ ] (Optional, needs a real token + invited bot) Temporarily set `delivery.method: slack`, export `SLACK_BOT_TOKEN`, run `uv run python briefing.py` and confirm the message lands in `C0BE6PB6S75` and a backup appears in `~/cyberbriefing-output/`.
