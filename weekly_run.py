@@ -13,9 +13,9 @@ import sys
 from datetime import date
 from pathlib import Path
 
-import yaml
 from dotenv import load_dotenv
 
+import config_loader
 from db import state
 from delivery.bear import deliver_to_stdout
 from delivery.dispatch import deliver
@@ -26,25 +26,26 @@ from weekly.summariser import summarise_week
 logger = logging.getLogger("cyberbriefing.weekly")
 
 OUTPUT_DIR = Path(os.path.expanduser("~/cyberbriefing-output"))
-CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
 
 def _load_scoring_config() -> dict:
     """Reuse the daily scoring config block (for the model name)."""
     try:
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            return yaml.safe_load(f).get("scoring", {})
-    except (OSError, yaml.YAMLError) as e:
+        return config_loader.load_config().get("scoring", {})
+    except OSError as e:
         logger.warning("Could not load config.yaml: %s", e)
         return {}
 
 
 def _load_delivery_config() -> dict:
-    """Load the delivery config block (method + slack channel)."""
+    """Load the delivery config block (method + slack channel).
+
+    Routed through config_loader so a per-machine config.local.yaml (e.g. the
+    laptop's delivery.method: slack) overrides the committed default.
+    """
     try:
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            return yaml.safe_load(f).get("delivery", {})
-    except (OSError, yaml.YAMLError) as e:
+        return config_loader.load_config().get("delivery", {})
+    except OSError as e:
         logger.warning("Could not load delivery config: %s", e)
         return {}
 

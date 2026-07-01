@@ -17,12 +17,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
 from dotenv import load_dotenv
 
 # Load .env from the project directory
 load_dotenv(Path(__file__).parent / ".env")
 
+import config_loader
 from collectors import rss, cisa_kev, nvd, hackerone, github_advisories
 from collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper, twis_scraper, anthropic_red_scraper
 from db.state import (
@@ -54,9 +54,7 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def load_config() -> dict:
-    config_path = Path(__file__).parent / "config.yaml"
-    with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    return config_loader.load_config()
 
 
 # ---------------------------------------------------------------------------
