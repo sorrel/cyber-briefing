@@ -8,9 +8,12 @@
     <!-- WORK LAPTOP variant (user duncanhurwood; delivers to Slack via
          config.local.yaml). Differs from the always-on Mac mini plist:
 
-         - Fires 08:40 on WEEKDAYS ONLY (Weekday 1-5 = Mon-Fri). The laptop is
-           usually closed at 06:15 and on weekends, so the mini's early/daily
-           schedule does not fit.
+         - Fires 08:40 on WEEKDAYS ONLY (Weekday 1-5 = Mon-Fri), with an
+           idempotent 09:40 fallback: briefing.py checks state.db
+           (was_delivered_today) and exits cleanly if 08:40 already delivered,
+           so the second slot is a no-op on good days and a ~1h retry on bad
+           ones. The laptop is usually closed at 06:15 and on weekends, so the
+           mini's early/daily schedule does not fit.
          - NO pmset wake. You cannot reliably wake a closed laptop lid, and the
            intent is "run when I'm actually using it." If the laptop is asleep
            at 08:40, launchd runs this missed calendar job once on the next
@@ -58,6 +61,32 @@
         <dict>
             <key>Weekday</key><integer>5</integer>
             <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <!-- +1h idempotent fallback: retries only if the 08:40 run didn't deliver -->
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>9</integer>
             <key>Minute</key><integer>40</integer>
         </dict>
     </array>
