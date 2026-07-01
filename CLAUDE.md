@@ -6,7 +6,16 @@ A Python pipeline that runs daily to produce a prioritised cybersecurity briefin
 
 ## Deployment environment
 
-Runs on a **Mac mini that is on 24/7** — not a laptop. No sleep/wake cycles, no Wi-Fi roaming, no battery state, no lid-close. Reasoning that assumes laptop conditions (e.g., "the Mac just woke up at 06:00") does not apply here.
+This tool runs on **two machines from the same git repo**. Per-machine differences are isolated to a gitignored `config.local.yaml` (delivery method) and separate launchd plists (schedule + paths); the shared code and `config.yaml` are identical on both.
+
+- **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. No `config.local.yaml`, so it keeps the committed default `delivery.method: bear`. Uses `com.cyberbriefing.{daily,weekly}.plist` (06:15 daily, all week; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
+- **Work laptop** (user `duncanhurwood`) — delivers to **Slack**. Has a `config.local.yaml` overriding `delivery.method` (Slack) and the scoring model. Uses `com.cyberbriefing.{daily,weekly}.laptop.plist` (08:40 **weekdays**; **Monday** weekly), and **no `pmset`**: a closed laptop can't be woken reliably, so it relies on launchd running a *missed* calendar job on the next wake ("08:40, or first wake after"). Slack delivery needs **1Password unlocked** at run time — the local-env FIFO streams no token while locked, and delivery then falls back to the markdown backup.
+
+Before applying any scheduling/network reasoning, check which machine you mean: the Mac-mini sections below assume always-on; the laptop sleeps, roams, and closes its lid.
+
+## Per-machine config (`config.local.yaml`)
+
+`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that key, leaving `delivery.slack.channel` intact). Both `briefing.py` and `weekly_run.py` load config through it. A machine with no local file gets the committed defaults (the mini). The laptop's `config.local.yaml` overrides `delivery.method` (to `slack`) and `scoring.model`. This is how one repo drives Bear + the committed default model on the mini and Slack + a machine-specific model on the laptop, without diverging committed files or branches.
 
 ## Running it
 
@@ -23,6 +32,8 @@ uv run python briefing.py               # Real run → Bear or Slack (per delive
 ```
 briefing.py          ← Entry point (CLI: --dry-run, --gather-only, --stats, -v)
 config.yaml          ← All source URLs, scoring weights, thresholds (edit me)
+config.local.yaml    ← Per-machine overrides, gitignored (laptop: delivery.method slack)
+config_loader.py     ← Loads config.yaml, deep-merges config.local.yaml over it
 prioritiser/
   prompt.txt         ← Claude scoring rubric (edit me to tune output)
   scorer.py          ← Claude API call; returns scored JSON
@@ -89,9 +100,11 @@ Edit `config.yaml`:
 | Max items sent to Claude | `config.yaml` → `scoring.max_score_input` |
 | Scoring rubric / source guidance | `prioritiser/prompt.txt` |
 | Section headers / render style | `delivery/formatter.py` |
-| Delivery target (bear / slack / stdout / markdown_file) | `config.yaml` → `delivery.method` (+ `delivery.slack.channel` for Slack) |
+| Delivery target (bear / slack / stdout / markdown_file) | `config.yaml` → `delivery.method` (+ `delivery.slack.channel` for Slack); per-machine override in `config.local.yaml` |
 
 ## Scheduling
+
+> This section describes the **home Mac mini** (`com.cyberbriefing.*.plist`). The **work laptop** uses `com.cyberbriefing.*.laptop.plist` — 08:40 on weekdays (`Weekday` 1–5), Monday 10:00 weekly, laptop paths, and **no `pmset`** (it relies on launchd firing the missed calendar job on the next wake, since a closed lid can't be woken). Install those the same way, substituting the `.laptop.plist` filenames. Everything else (Aqua/Interactive/`caffeinate`/idempotency) is identical.
 
 Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. Two slots:
 
@@ -131,7 +144,7 @@ tail -f /tmp/cyberbriefing.err
 
 ## Weekly summary 🗓️
 
-A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and rolls the week's daily briefings into one Bear note — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories. (Backup retention was raised 7 → 10 days so Sunday always sees the full week.)
+A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and rolls the week's daily briefings into one Bear note — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories. (Backup retention was raised 7 → 10 days so Sunday always sees the full week.) The **laptop** runs this **Monday 10:00** instead; `weekly/reader.py: select_week_files` targets the **most recently completed Mon→Sun week**, so both a Sunday run (mini) and a Monday run (laptop) summarise the week that just ended — not the empty week starting today.
 
 ```bash
 uv run python weekly_run.py --dry-run   # → stdout, no state changes
@@ -144,9 +157,12 @@ uv run python weekly_run.py             # → Bear or Slack (per delivery.method
 
 ## Slack delivery
 
-Set `config.yaml` → `delivery.method: slack` to deliver to a Slack channel
-instead of Bear. Applies to both the daily (`briefing.py`) and weekly
-(`weekly_run.py`) pipelines, which both route through `delivery/dispatch.py`.
+Set `delivery.method: slack` to deliver to a Slack channel instead of Bear.
+On the multi-machine setup this lives in the laptop's gitignored
+`config.local.yaml` (see *Per-machine config* above), not in the shared
+`config.yaml` (which stays `bear` for the mini). Applies to both the daily
+(`briefing.py`) and weekly (`weekly_run.py`) pipelines, which both route
+through `delivery/dispatch.py`.
 
 - **Auth:** `SLACK_BOT_TOKEN` (env, via the 1Password local env file). Only
   the `chat:write` bot scope is needed; the bot must be invited to the channel.
