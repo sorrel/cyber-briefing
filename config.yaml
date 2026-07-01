@@ -14,9 +14,11 @@ scoring:
   model: "claude-sonnet-4-6"
 
 delivery:
-  method: "bear"         # bear | stdout | markdown_file
+  method: "bear"         # bear | slack | stdout | markdown_file
   bear_tag: "security/briefing/daily"
   markdown_output_dir: "~/cyberbriefing-output"
+  slack:
+    channel: "C0BE6PB6S75"   # channel ID; the bot must be invited to this channel
 
 schedule:
   hour: 6
