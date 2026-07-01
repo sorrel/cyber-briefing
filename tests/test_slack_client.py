@@ -27,7 +27,11 @@ def test_missing_token_returns_false(monkeypatch):
 
 def test_missing_channel_returns_false(monkeypatch):
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
+    posted = []
+    monkeypatch.setattr(slack_mod.requests, "post",
+                        lambda *a, **k: posted.append(k) or FakeResp(payload={"ok": True, "ts": "1"}))
     assert deliver_to_slack("T", "body", [], {}) is False
+    assert posted == []
 
 
 def test_single_message_posts_parent(monkeypatch):
@@ -89,3 +93,18 @@ def test_rate_limit_then_success(monkeypatch):
     monkeypatch.setattr(slack_mod.requests, "post", lambda *a, **k: seq.pop(0))
     assert deliver_to_slack("T", "body", [], CFG) is True
     assert seq == []  # both responses consumed → it retried
+
+
+def test_thread_reply_failure_is_non_fatal(monkeypatch):
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
+    monkeypatch.setattr(
+        slack_mod, "markdown_to_block_groups",
+        lambda t, b: [[{"type": "divider"}], [{"type": "divider"}]],
+    )
+    seq = [
+        FakeResp(payload={"ok": True, "ts": "111.1"}),             # parent posts
+        FakeResp(payload={"ok": False, "error": "msg_too_long"}),  # reply fails
+    ]
+    monkeypatch.setattr(slack_mod.requests, "post", lambda *a, **k: seq.pop(0))
+    assert deliver_to_slack("T", "body", [], CFG) is True   # parent OK → True despite reply failure
+    assert seq == []                                        # both responses consumed

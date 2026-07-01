@@ -68,7 +68,10 @@ def _post_message(token: str, channel: str, fallback_text: str,
             return None
         if resp.status_code == 429:
             if attempt < _MAX_RATELIMIT_RETRIES:
-                retry_after = int(resp.headers.get("Retry-After", "1"))
+                try:
+                    retry_after = int(resp.headers.get("Retry-After", "1"))
+                except (TypeError, ValueError):
+                    retry_after = 1
                 logger.info("Slack rate-limited; retrying after %ds", retry_after)
                 time.sleep(retry_after)
                 continue
@@ -83,4 +86,3 @@ def _post_message(token: str, channel: str, fallback_text: str,
             return data.get("ts")
         logger.warning("Slack API error: %s", data.get("error", "unknown"))
         return None
-    return None
