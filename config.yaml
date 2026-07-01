@@ -14,7 +14,7 @@ scoring:
   model: "claude-sonnet-4-6"
 
 delivery:
-  method: "bear"         # bear | slack | stdout | markdown_file
+  method: "slack"        # bear | slack | stdout | markdown_file
   bear_tag: "security/briefing/daily"
   markdown_output_dir: "~/cyberbriefing-output"
   slack:
