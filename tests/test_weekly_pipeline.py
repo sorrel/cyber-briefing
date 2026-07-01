@@ -47,8 +47,8 @@ def test_run_weekly_real_marks_delivered(tmp_path, monkeypatch):
     )
     delivered = {}
     monkeypatch.setattr(
-        weekly_mod, "deliver_to_bear",
-        lambda title, body, tags: delivered.update(title=title, body=body, tags=tags) or True,
+        weekly_mod, "deliver",
+        lambda delivery_cfg, title, body, tags: delivered.update(title=title, body=body, tags=tags) or True,
     )
     rc = weekly_mod.run_weekly(tmp_path, date(2026, 6, 21), dry_run=False, config={}, conn=conn)
     assert rc == 0
