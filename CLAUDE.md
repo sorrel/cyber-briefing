@@ -15,7 +15,7 @@ Runs on a **Mac mini that is on 24/7** — not a laptop. No sleep/wake cycles, n
 uv run python briefing.py --dry-run     # Full pipeline → stdout (no state changes)
 uv run python briefing.py --gather-only # Collect only, mark seen, no scoring
 uv run python briefing.py --stats       # Show DB stats by source
-uv run python briefing.py               # Real run → Bear Notes
+uv run python briefing.py               # Real run → Bear or Slack (per delivery.method)
 ```
 
 ## Architecture
@@ -135,7 +135,7 @@ A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and 
 
 ```bash
 uv run python weekly_run.py --dry-run   # → stdout, no state changes
-uv run python weekly_run.py             # → Bear Notes
+uv run python weekly_run.py             # → Bear or Slack (per delivery.method)
 ```
 
 - **Code:** `weekly_run.py` + the `weekly/` package (`reader.py`, `summariser.py`, `prompt.txt`, `formatter.py`); reuses `delivery/bear.py` and `db/state.py`.
