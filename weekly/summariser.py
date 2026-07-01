@@ -98,6 +98,10 @@ def summarise_week(stories: list[dict], config: dict | None = None) -> list[dict
             response = client.messages.create(
                 model=model,
                 max_tokens=MAX_TOKENS,
+                # Sonnet 5 defaults adaptive thinking ON when `thinking` is
+                # omitted (OFF on Sonnet 4.6). Keep it off so thinking doesn't
+                # share the MAX_TOKENS budget with the summary output.
+                thinking={"type": "disabled"},
                 system=[{
                     "type": "text",
                     "text": system_prompt,

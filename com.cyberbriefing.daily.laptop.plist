@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.cyberbriefing.daily</string>
+
+    <!-- WORK LAPTOP variant (user duncanhurwood; delivers to Slack via
+         config.local.yaml). Differs from the always-on Mac mini plist:
+
+         - Fires 08:40 on WEEKDAYS ONLY (Weekday 1-5 = Mon-Fri), with an
+           idempotent 09:40 fallback: briefing.py checks state.db
+           (was_delivered_today) and exits cleanly if 08:40 already delivered,
+           so the second slot is a no-op on good days and a ~1h retry on bad
+           ones. The laptop is usually closed at 06:15 and on weekends, so the
+           mini's early/daily schedule does not fit.
+         - NO pmset wake. You cannot reliably wake a closed laptop lid, and the
+           intent is "run when I'm actually using it." If the laptop is asleep
+           at 08:40, launchd runs this missed calendar job once on the next
+           wake — exactly the desired behaviour.
+         - Slack delivery depends on 1Password being UNLOCKED at run time (the
+           local-env FIFO streams no token while locked). Usually true once you
+           are working; if locked, delivery falls back to the markdown backup.
+
+         caffeinate -is keeps the system awake for the duration of the run. -->
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-is</string>
+        <string>/opt/homebrew/bin/uv</string>
+        <string>run</string>
+        <string>--directory</string>
+        <string>/Users/duncanhurwood/Documents/Program/github/cyber-briefing</string>
+        <string>python</string>
+        <string>briefing.py</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <!-- +1h idempotent fallback: retries only if the 08:40 run didn't deliver -->
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/cyberbriefing.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/cyberbriefing.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/duncanhurwood/.local/bin</string>
+    </dict>
+</dict>
+</plist>

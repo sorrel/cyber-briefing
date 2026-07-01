@@ -90,6 +90,29 @@ def test_select_week_files_picks_monday_to_sunday(tmp_path):
     assert sunday == date(2026, 6, 21)
 
 
+def test_select_week_files_monday_picks_previous_week(tmp_path):
+    # On the laptop the summary runs Monday 10:00. A Monday run must summarise
+    # the week that just ENDED (Mon 2026-06-15 .. Sun 2026-06-21), not the new
+    # week that starts today (which is empty).
+    names = [
+        "Cyber Briefing _ 2026-06-15.md",  # previous Monday — included
+        "Cyber Briefing _ 2026-06-19.md",  # included
+        "Cyber Briefing _ 2026-06-21.md",  # previous Sunday — included
+        "Cyber Briefing _ 2026-06-22.md",  # the run day (new week) — excluded
+    ]
+    for n in names:
+        (tmp_path / n).write_text("x", encoding="utf-8")
+    paths, monday, sunday = select_week_files(tmp_path, date(2026, 6, 22))
+    got = [p.name for p in paths]
+    assert got == [
+        "Cyber Briefing _ 2026-06-15.md",
+        "Cyber Briefing _ 2026-06-19.md",
+        "Cyber Briefing _ 2026-06-21.md",
+    ]
+    assert monday == date(2026, 6, 15)
+    assert sunday == date(2026, 6, 21)
+
+
 def test_read_week_counts_briefings(tmp_path):
     (tmp_path / "Cyber Briefing _ 2026-06-19.md").write_text(FIXTURE, encoding="utf-8")
     stories, n_briefings, monday, sunday = read_week(tmp_path, date(2026, 6, 21))

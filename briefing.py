@@ -17,12 +17,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
 from dotenv import load_dotenv
 
 # Load .env from the project directory
 load_dotenv(Path(__file__).parent / ".env")
 
+import config_loader
 from collectors import rss, cisa_kev, nvd, hackerone, github_advisories
 from collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper, twis_scraper, anthropic_red_scraper
 from db.state import (
@@ -40,7 +40,8 @@ from db.state import (
 from prioritiser.scorer import score_items
 from prioritiser.clusterer import cluster_items
 from delivery.formatter import format_briefing
-from delivery.bear import deliver_to_bear, deliver_to_stdout
+from delivery.bear import deliver_to_stdout
+from delivery.dispatch import deliver
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -53,9 +54,7 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def load_config() -> dict:
-    config_path = Path(__file__).parent / "config.yaml"
-    with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    return config_loader.load_config()
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +248,7 @@ def run_pipeline(
             # there is no more retry today, so escalate to Bear.
             if datetime.now().hour >= 7:
                 logger.error("Past 07:00 — escalating scoring failure to Bear.")
-                _deliver_scoring_failure_to_bear(reason, len(new_items))
+                _deliver_scoring_failure(config.get("delivery", {}), reason, len(new_items))
                 # Mark delivered so a manually-triggered later fire doesn't
                 # double-up the error note. A real briefing was not produced,
                 # but the user has been notified for the day.
@@ -275,14 +274,7 @@ def run_pipeline(
     if dry_run:
         success = deliver_to_stdout(title, body, tags)
     else:
-        delivery_method = config.get("delivery", {}).get("method", "bear")
-        if delivery_method == "bear":
-            success = deliver_to_bear(title, body, tags)
-        elif delivery_method == "stdout":
-            success = deliver_to_stdout(title, body, tags)
-        else:
-            logger.error("Unknown delivery method: %s", delivery_method)
-            success = False
+        success = deliver(config.get("delivery", {}), title, body, tags)
 
     if not dry_run:
         included_ids = {item.get("id") for item in scored_items}
@@ -347,11 +339,11 @@ def _write_failure_marker(kind: str = "all_sources_zero", detail: str = "") -> N
         logger.error("Failed to write failure marker: %s", e)
 
 
-def _deliver_scoring_failure_to_bear(reason: str, new_item_count: int) -> bool:
-    """Send a short error note to Bear when the *last* scheduled fire of the
-    day still couldn't score. Gives the user visibility instead of silence.
-
-    Returns whether the note (or its markdown backup) was preserved.
+def _deliver_scoring_failure(delivery_cfg: dict, reason: str, new_item_count: int) -> bool:
+    """Send a short error note via the configured method when the *last*
+    scheduled fire of the day still couldn't score. Gives the user visibility
+    instead of silence. Returns whether the note (or its markdown backup) was
+    preserved.
     """
     logger = logging.getLogger("cyberbriefing")
     date = datetime.now().strftime("%Y-%m-%d")
@@ -369,9 +361,10 @@ def _deliver_scoring_failure_to_bear(reason: str, new_item_count: int) -> bool:
         "no further automatic retry will run today.*\n"
     ).replace("{date}", date)
     try:
-        return deliver_to_bear(title, body, ["security/briefing/daily", "security/briefing/failure"])
+        return deliver(delivery_cfg, title, body,
+                       ["security/briefing/daily", "security/briefing/failure"])
     except Exception as e:
-        logger.error("Failed to deliver scoring-failure note to Bear: %s", e)
+        logger.error("Failed to deliver scoring-failure note: %s", e)
         return False
 
 

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.cyberbriefing.weekly</string>
+
+    <!-- WORK LAPTOP variant (user duncanhurwood; delivers to Slack via
+         config.local.yaml). Differs from the always-on Mac mini plist:
+
+         - Fires MONDAY 10:00 (Weekday 1), not Sunday 12:00, with an idempotent
+           11:00 fallback: weekly_run.py checks state.db
+           (was_weekly_delivered_this_week) and exits cleanly if 10:00 already
+           delivered, so the second slot is a no-op on good weeks and a ~1h
+           retry on bad ones. The laptop is closed at weekends, so the summary
+           runs on the first weekday. The reader (weekly/reader.py) targets the
+           most recently COMPLETED Mon-Sun week, so a Monday run summarises the
+           week that just ended.
+         - NO pmset wake — if asleep at 10:00, launchd runs it on the next wake.
+
+         caffeinate -is keeps the system awake for the duration of the run. -->
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-is</string>
+        <string>/opt/homebrew/bin/uv</string>
+        <string>run</string>
+        <string>--directory</string>
+        <string>/Users/duncanhurwood/Documents/Program/github/cyber-briefing</string>
+        <string>python</string>
+        <string>weekly_run.py</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>10</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <!-- +1h idempotent fallback: retries only if the 10:00 run didn't deliver -->
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>11</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/cyberbriefing-weekly.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/cyberbriefing-weekly.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/duncanhurwood/.local/bin</string>
+    </dict>
+</dict>
+</plist>

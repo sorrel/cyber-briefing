@@ -2,11 +2,20 @@
 
 ## What this is
 
-A Python pipeline that runs daily to produce a prioritised cybersecurity briefing, delivered to Bear Notes. It gathers from 17+ sources (APIs, RSS feeds, scrapers), scores each item using Claude, and formats a tiered markdown document.
+A Python pipeline that runs daily to produce a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel (configurable). It gathers from 17+ sources (APIs, RSS feeds, scrapers), scores each item using Claude, and formats a tiered markdown document.
 
 ## Deployment environment
 
-Runs on a **Mac mini that is on 24/7** — not a laptop. No sleep/wake cycles, no Wi-Fi roaming, no battery state, no lid-close. Reasoning that assumes laptop conditions (e.g., "the Mac just woke up at 06:00") does not apply here.
+This tool runs on **two machines from the same git repo**. Per-machine differences are isolated to a gitignored `config.local.yaml` (delivery method) and separate launchd plists (schedule + paths); the shared code and `config.yaml` are identical on both.
+
+- **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. No `config.local.yaml`, so it keeps the committed default `delivery.method: bear`. Uses `com.cyberbriefing.{daily,weekly}.plist` (06:15 daily, all week; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
+- **Work laptop** (user `duncanhurwood`) — delivers to **Slack**. Has a `config.local.yaml` overriding `delivery.method` (Slack) and the scoring model. Uses `com.cyberbriefing.{daily,weekly}.laptop.plist` (08:40 **weekdays**; **Monday** weekly), and **no `pmset`**: a closed laptop can't be woken reliably, so it relies on launchd running a *missed* calendar job on the next wake ("08:40, or first wake after"). Slack delivery needs **1Password unlocked** at run time — the local-env FIFO streams no token while locked, and delivery then falls back to the markdown backup.
+
+Before applying any scheduling/network reasoning, check which machine you mean: the Mac-mini sections below assume always-on; the laptop sleeps, roams, and closes its lid.
+
+## Per-machine config (`config.local.yaml`)
+
+`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that key, leaving `delivery.slack.channel` intact). Both `briefing.py` and `weekly_run.py` load config through it. A machine with no local file gets the committed defaults (the mini). The laptop's `config.local.yaml` overrides `delivery.method` (to `slack`) and `scoring.model`. This is how one repo drives Bear + the committed default model on the mini and Slack + a machine-specific model on the laptop, without diverging committed files or branches.
 
 ## Running it
 
@@ -15,7 +24,7 @@ Runs on a **Mac mini that is on 24/7** — not a laptop. No sleep/wake cycles, n
 uv run python briefing.py --dry-run     # Full pipeline → stdout (no state changes)
 uv run python briefing.py --gather-only # Collect only, mark seen, no scoring
 uv run python briefing.py --stats       # Show DB stats by source
-uv run python briefing.py               # Real run → Bear Notes
+uv run python briefing.py               # Real run → Bear or Slack (per delivery.method)
 ```
 
 ## Architecture
@@ -23,6 +32,8 @@ uv run python briefing.py               # Real run → Bear Notes
 ```
 briefing.py          ← Entry point (CLI: --dry-run, --gather-only, --stats, -v)
 config.yaml          ← All source URLs, scoring weights, thresholds (edit me)
+config.local.yaml    ← Per-machine overrides, gitignored (laptop: delivery.method slack)
+config_loader.py     ← Loads config.yaml, deep-merges config.local.yaml over it
 prioritiser/
   prompt.txt         ← Claude scoring rubric (edit me to tune output)
   scorer.py          ← Claude API call; returns scored JSON
@@ -37,7 +48,11 @@ collectors/
   ico_scraper.py     ← ICO enforcement actions scraper (weekly)
 delivery/
   formatter.py       ← Converts scored items → markdown (title, body, tags)
-  bear.py            ← Delivers to Bear Notes via x-callback-url; always writes a markdown backup to ~/cyberbriefing-output/
+  dispatch.py        ← Routes (title, body, tags) to the configured delivery.method; always writes the markdown backup
+  bear.py            ← Bear Notes via x-callback-url (Bear-only; backup lives in dispatch/backup now)
+  slack.py           ← Slack chat.postMessage delivery (native message + threaded overflow)
+  slack_format.py    ← Converts briefing markdown → Slack Block Kit groups
+  backup.py          ← Always-on markdown backup to ~/cyberbriefing-output/ (read by the weekly pipeline)
 db/
   state.py           ← SQLite at ~/.cyberbriefing/state.db; tracks seen items + scraper schedules
 ```
@@ -48,7 +63,7 @@ db/
 2. **Score**: Up to 150 most-recent unseen items sent to Claude with prompt.txt
 3. **Cluster**: Items sharing a cluster_id are collapsed (highest score wins)
 4. **Format**: Tiered markdown — Critical / Notable / Radar / Britain
-5. **Deliver**: Bear Notes (real run) or stdout (--dry-run)
+5. **Deliver**: via `delivery.method` — Bear Notes or Slack (real run) or stdout (--dry-run); a markdown backup is always written
 6. **Mark seen**: All gathered items written to state.db
 
 ## Tiers
@@ -85,8 +100,11 @@ Edit `config.yaml`:
 | Max items sent to Claude | `config.yaml` → `scoring.max_score_input` |
 | Scoring rubric / source guidance | `prioritiser/prompt.txt` |
 | Section headers / render style | `delivery/formatter.py` |
+| Delivery target (bear / slack / stdout / markdown_file) | `config.yaml` → `delivery.method` (+ `delivery.slack.channel` for Slack); per-machine override in `config.local.yaml` |
 
 ## Scheduling
+
+> This section describes the **home Mac mini** (`com.cyberbriefing.*.plist`). The **work laptop** uses `com.cyberbriefing.*.laptop.plist` — 08:40 on weekdays (`Weekday` 1–5), Monday 10:00 weekly, laptop paths, and **no `pmset`** (it relies on launchd firing the missed calendar job on the next wake, since a closed lid can't be woken). Install those the same way, substituting the `.laptop.plist` filenames. Everything else (Aqua/Interactive/`caffeinate`/idempotency) is identical.
 
 Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. Two slots:
 
@@ -126,16 +144,43 @@ tail -f /tmp/cyberbriefing.err
 
 ## Weekly summary 🗓️
 
-A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and rolls the week's daily briefings into one Bear note — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories. (Backup retention was raised 7 → 10 days so Sunday always sees the full week.)
+A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and rolls the week's daily briefings into one Bear note — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories. (Backup retention was raised 7 → 10 days so Sunday always sees the full week.) The **laptop** runs this **Monday 10:00** instead; `weekly/reader.py: select_week_files` targets the **most recently completed Mon→Sun week**, so both a Sunday run (mini) and a Monday run (laptop) summarise the week that just ended — not the empty week starting today.
 
 ```bash
 uv run python weekly_run.py --dry-run   # → stdout, no state changes
-uv run python weekly_run.py             # → Bear Notes
+uv run python weekly_run.py             # → Bear or Slack (per delivery.method)
 ```
 
 - **Code:** `weekly_run.py` + the `weekly/` package (`reader.py`, `summariser.py`, `prompt.txt`, `formatter.py`); reuses `delivery/bear.py` and `db/state.py`.
 - **Scheduling:** `com.cyberbriefing.weekly.plist` — same Aqua/Interactive/`caffeinate` hardening as the daily, no `pmset` needed at midday. Install/inspect like the daily plist (label `com.cyberbriefing.weekly`); logs at `/tmp/cyberbriefing-weekly.{log,err}`.
 - **Failure:** empty week or Claude failure → `FAILURE-weekly-<date>.md` + non-zero exit; the 13:30 fallback retries.
+
+## Slack delivery
+
+Set `delivery.method: slack` to deliver to a Slack channel instead of Bear.
+On the multi-machine setup this lives in the laptop's gitignored
+`config.local.yaml` (see *Per-machine config* above), not in the shared
+`config.yaml` (which stays `bear` for the mini). Applies to both the daily
+(`briefing.py`) and weekly (`weekly_run.py`) pipelines, which both route
+through `delivery/dispatch.py`.
+
+- **Auth:** `SLACK_BOT_TOKEN` (env, via the 1Password local env file). Only
+  the `chat:write` bot scope is needed; the bot must be invited to the channel.
+- **Channel:** `delivery.slack.channel` in `config.yaml` (a channel ID; never
+  hardcoded in Python).
+- **Rendering:** `delivery/slack_format.py` converts the briefing markdown to
+  Slack Block Kit — note Slack's `*bold*` / `_italic_` is the inverse of our
+  markdown's `*italic*`, which the converter remaps. Long briefings overflow
+  into threaded replies under the parent message.
+- **Backup invariant:** `delivery/dispatch.py` always writes the
+  `~/cyberbriefing-output/` markdown backup for every method except `stdout`,
+  because `weekly/reader.py` reads those backups. Bear/Slack posting is
+  best-effort; the backup is the durable artifact and the success signal.
+- **Secrets caveat:** the 1Password local env file prompts for authorization
+  on first read after 1Password *locks*, and its FIFO does not support
+  concurrent readers. For the unattended launchd fires to obtain the token,
+  1Password must stay unlocked. The daily and weekly fire windows do not
+  overlap, so the single-reader limit is not a concern.
 
 ## Bear delivery bug — investigation and fix (30 April 2026)
 
@@ -207,10 +252,12 @@ The 4 May plist setup (Aqua, Interactive, caffeinate, cron-style schedule, idemp
 
 ## Secrets
 
-Uses `.env` file (gitignored). Required keys:
+Uses a `.env` file (gitignored), sourced via the 1Password local env file
+(values streamed on read; standard `load_dotenv` — no `op run`). Required keys:
 - `ANTHROPIC_API_KEY` — for Claude scoring
 - `HACKERONE_USERNAME` / `HACKERONE_TOKEN` — optional, for HackerOne collector
 - `GITHUB_TOKEN` — optional, for GitHub Advisories collector
+- `SLACK_BOT_TOKEN` — optional, only for `delivery.method: slack` (Slack app bot token, `chat:write` scope)
 
 ## State DB
 
