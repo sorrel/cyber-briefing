@@ -225,5 +225,8 @@ def _pretty_source(slug: str) -> str:
         "this_week_in_security": "This Week in Security",
         "anthropic_red": "Anthropic Red Team",
         "latio_pulse": "Latio Pulse",
+        "fca": "FCA",
+        "socket": "Socket",
+        "embrace_the_red": "Embrace The Red",
     }
     return names.get(slug, slug.replace("_", " ").title())

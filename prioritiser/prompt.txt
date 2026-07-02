@@ -21,7 +21,8 @@ CVEs and KEV entries should appear only when genuinely novel, actively exploited
 Score each item on four dimensions from 1 to 5:
 
 ### Geographic relevance (weight: 1.0)
-- 5: UK-specific (NCSC advisories, ICO enforcement, UK legislation, UK-headquartered companies)
+- 6: UK-specific (NCSC advisories, ICO/FCA enforcement, UK legislation, UK-headquartered companies) — the reader is UK-based, so home-nation items get the top score
+- 5: Strong UK relevance without being UK-exclusive (a UK organisation or sector prominently affected in an otherwise global story)
 - 4: EU-wide (ENISA, NIS2, GDPR enforcement)
 - 3: Global impact or clear cross-border implications
 - 2: US-specific but with transferable lessons for UK/EU practitioners
@@ -37,6 +38,7 @@ This dimension covers the full breadth of the security professional's interests,
   - Major AI model releases or AI-security intersection (AI used in attacks or defences, new model capabilities with security relevance)
   - Significant new security tools or major version releases in widely-used tooling
   - Novel attack techniques or vulnerability classes
+  - Financial-sector security: breaches, attacks, or fraud campaigns hitting banks, payment processors, fintech, or crypto platforms; and UK/EU financial-services regulation or enforcement with a cyber or operational-resilience angle (FCA, PRA, ECB, DORA). The reader works in financial services — treat these as top-tier domain relevance.
 - 4: Any of the following —
   - API security, authentication/session vulnerabilities, supply chain attacks (npm/PyPI), OAuth/OIDC issues
   - Security acquisitions, company events, or industry shifts with direct relevance to the practitioner's stack
@@ -73,7 +75,7 @@ Actionability is not only about patching. Reading a new OWASP cheat sheet, under
 
 Calculate: (geographic × 1.0) + (domain × 1.5) + (actionability × 1.2) + (novelty × 0.8)
 
-Maximum possible: 22.5
+Maximum possible: 23.5
 
 Assign tiers:
 - "critical": score >= 17 (act on these — or read this, or get a copy of this — immediately)
@@ -95,7 +97,9 @@ These examples show the scoring intent. Use them to calibrate your judgement:
 | Major acquisition in appsec tooling | 3 | 4 | 3 | 4 | notable |
 | NVD CVE, obscure enterprise product | 2 | 2 | 2 | 2 | excluded |
 | Routine WordPress plugin CVE | 2 | 2 | 2 | 1 | excluded |
-| NCSC advisory, UK-specific threat | 5 | 3 | 4 | 3 | notable/radar |
+| NCSC advisory, UK-specific threat | 6 | 3 | 3 | 3 | notable |
+| UK bank / fintech breach with data exposure | 6 | 5 | 4 | 3 | critical |
+| FCA enforcement over a firm's cyber/resilience failing | 6 | 4 | 3 | 2 | notable |
 | New Semgrep major release | 3 | 5 | 4 | 4 | notable |
 
 ## Topic guidance: WordPress vulnerabilities
@@ -104,12 +108,12 @@ WordPress vulnerabilities are extremely common and rarely novel. Only include th
 
 ## Topic guidance: Finance and financial crime
 
-Finance and financial services are high-priority for this professional:
+Financial-sector security is a first-class domain for this professional (see the domain-5 list above) — they work in financial services. Score it accordingly:
 
-- **Breaches or attacks on banks, payment processors, fintech, or crypto platforms**: domain 4–5, boost actionability by 1 if UK/EU institution affected
+- **Breaches or attacks on banks, payment processors, fintech, or crypto platforms**: domain 5, boost actionability by 1 if a UK/EU institution is affected
 - **Financial crime with a cyber angle** (fraud, BEC, money laundering via crypto, ATO at scale): domain 4, actionability 3–4
-- **UK financial sector specifically** (FCA enforcement, UK bank breaches, Open Banking vulnerabilities): geographic 5, domain 4–5
-- **Regulatory actions against financial institutions** (FCA, PRA, ECB, FinCEN): geographic 4–5, actionability 3–4
+- **UK financial sector specifically** (FCA enforcement, UK bank breaches, Open Banking vulnerabilities): geographic 6, domain 4–5
+- **Regulatory actions against financial institutions** (FCA, PRA, ECB, FinCEN, DORA obligations): geographic 4–6, actionability 3–4
 
 ## Source guidance: The Register
 
@@ -147,6 +151,23 @@ Major AI developments belong in the briefing when they have security relevance:
 - **AI used in an attack or defence**: domain 5, score on merits.
 - **AI safety or alignment news with practical security implications**: domain 4.
 - **Generic AI hype or product marketing with no security angle**: domain 1–2, likely excluded.
+
+## Source guidance: Socket (software supply chain)
+
+Socket reports on malicious or compromised open-source packages (npm, PyPI, crates, Go, etc.) and software supply-chain attacks — a high-signal area for this professional:
+
+- **New malicious-package campaign or dependency compromise in a widely-used ecosystem**: domain 4–5, actionability 3–4, score on merits.
+- **Novel malware, obfuscation, or supply-chain technique**: novelty 4–5.
+- **Routine single low-download typosquat with no wider lesson**: domain 2–3, radar at most.
+- IMPORTANT — the briefing reports *about* these threats, it does not distribute them. In the summary and annotation, describe the campaign and its defensive lesson in prose only. Do NOT reproduce raw malicious code, install/one-liner commands, full package or IOC lists, hashes, or exfiltration URLs. Name the ecosystem and the technique in words instead.
+
+## Source guidance: Embrace The Red
+
+Embrace The Red (Johann Rehberger) publishes offensive AI/LLM security research — prompt injection, agent and tool-use exploitation, and related techniques. Genuinely novel work, but weight it conservatively for now:
+
+- **Genuinely novel attack technique that generalises across models or products**: domain 4, actionability 3, novelty 4–5 — can reach notable.
+- **Single-target proof-of-concept, incremental variation, or narrow demo**: domain 3, actionability 2, radar at most.
+- Default to radar unless the technique clearly generalises beyond one product or vendor. Do not let a single-author PoC outrank a primary advisory or vendor release covering the same class of issue.
 
 ## Output format
 

@@ -80,7 +80,7 @@ db/
 
 `(geographic × 1.0) + (domain × 1.5) + (actionability × 1.2) + (novelty × 0.8)`
 
-Max: 22.5. Weights tuned for a UK-based appsec professional.
+Max: 23.5. Geographic scores up to 6 (UK-specific items get an extra point over the other tiers); the other three dimensions are 1–5. Weights tuned for a UK-based appsec professional in financial services.
 
 ## Adding or removing sources
 
