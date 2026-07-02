@@ -17,12 +17,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-# Load .env from the project directory
-load_dotenv(Path(__file__).parent / ".env")
-
 import config_loader
+
+# NB: the .env load happens inside main() (via config_loader.load_env_with_timeout),
+# NOT at import time. The secrets .env is a 1Password FIFO that blocks open() until
+# 1Password attaches; loading it at import once hung this process — and the test
+# suite — for an hour. Deferring it to main() keeps imports side-effect-free and
+# lets the bounded loader + logging do their job. See CLAUDE.md (2 Jul 2026).
 from collectors import rss, cisa_kev, nvd, hackerone, github_advisories
 from collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper, twis_scraper, anthropic_red_scraper
 from db.state import (
@@ -154,16 +155,40 @@ def gather_all(config: dict, db_conn) -> tuple[list[dict], int]:
     return new_items, len(all_items)
 
 
+def _secrets_blocked(env_ready: bool, dry_run: bool, gather_only: bool) -> bool:
+    """Whether a run must abort because the .env load timed out.
+
+    A real delivery run needs secrets (ANTHROPIC_API_KEY, and SLACK_BOT_TOKEN
+    when delivering to Slack), so a timed-out load (locked 1Password) means we
+    can't produce a briefing — fail fast rather than gather for nothing. A
+    dry-run is a preview (the scorer just reports the missing key to stdout and
+    no marker/state is written) and gather-only needs no secrets, so neither is
+    blocked.
+    """
+    return not env_ready and not dry_run and not gather_only
+
+
 def run_pipeline(
     config: dict,
     dry_run: bool = False,
     gather_only: bool = False,
+    env_ready: bool = True,
 ) -> bool:
     """Execute the full gather -> prioritise -> deliver pipeline.
 
     Returns True if the pipeline completed successfully.
     """
     logger = logging.getLogger("cyberbriefing")
+
+    # Fail fast if secrets never loaded (1Password FIFO not fed). Do this before
+    # touching the DB or network so a locked morning frees the launchd slot for
+    # the fallback fire, and writes an *accurate* marker rather than the
+    # misleading "scoring failed / API overloaded" one that would follow.
+    if _secrets_blocked(env_ready, dry_run, gather_only):
+        logger.error("Secrets unavailable (1Password FIFO not fed) — aborting before gather.")
+        _write_failure_marker(kind="secrets_unavailable")
+        return False
+
     db_conn = get_connection()
 
     # Idempotency: the launchd 07:30 fallback fires the same script — exit
@@ -313,6 +338,19 @@ _FAILURE_BODIES = {
         "Check first:\n"
         "- `/tmp/cyberbriefing.log` for the exact API errors per chunk\n"
         "- Anthropic status page if the same failure repeats across both fires\n"
+    ),
+    "secrets_unavailable": (
+        "The `.env` secrets never loaded: the 1Password local-env FIFO was not "
+        "fed within the timeout, so `open()` had no writer. This is virtually "
+        "always **1Password locked (or the authorisation prompt unseen)** at "
+        "fire time — the exact 2 Jul 2026 failure mode.\n\n"
+        "The run aborted before gathering rather than hanging, so the fallback "
+        "fire (and the next wake) will retry automatically once 1Password is "
+        "unlocked.\n\n"
+        "Check first:\n"
+        "- Is 1Password unlocked? Unlock it, then `launchctl kickstart -k "
+        "gui/$(id -u)/com.cyberbriefing.daily` to re-fire immediately\n"
+        "- `/tmp/cyberbriefing.log` for the `Timed out … loading secrets` lines\n"
     ),
 }
 
@@ -489,6 +527,11 @@ def main():
     args = parser.parse_args()
     setup_logging(args.verbose)
 
+    # Whole-process backstop: no single fire may hang past this, whatever the
+    # cause (wedged HTTP, stuck scraper, a future regression). Armed before any
+    # work; cancelled on the clean-exit path below.
+    watchdog = config_loader.arm_runtime_watchdog(max_seconds=900)
+
     if args.stats:
         show_stats()
         return
@@ -499,13 +542,20 @@ def main():
         print(f"Cleared {removed} seen items for source '{args.clear_source}'")
         return
 
+    # Load secrets with a hard timeout — the .env is a 1Password FIFO that can
+    # block open() forever when 1Password is locked. A timeout (env_ready=False)
+    # makes run_pipeline fail fast with an accurate marker instead of hanging.
+    env_ready = config_loader.load_env_with_timeout(Path(__file__).parent / ".env")
+
     config = load_config()
     success = run_pipeline(
         config,
         dry_run=args.dry_run,
         gather_only=args.gather_only,
+        env_ready=env_ready,
     )
 
+    watchdog.cancel()
     sys.exit(0 if success else 1)
 
 
