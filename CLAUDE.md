@@ -9,7 +9,7 @@ A Python pipeline that runs daily to produce a prioritised cybersecurity briefin
 This tool runs on **two machines from the same git repo**. Per-machine differences are isolated to a gitignored `config.local.yaml` (delivery method) and separate launchd plists (schedule + paths); the shared code and `config.yaml` are identical on both.
 
 - **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. No `config.local.yaml`, so it keeps the committed default `delivery.method: bear`. Uses `com.cyberbriefing.{daily,weekly}.plist` (06:15 daily, all week; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
-- **Work laptop** (user `duncanhurwood`) — delivers to **Slack**. Has a `config.local.yaml` overriding `delivery.method` (Slack) and the scoring model. Uses `com.cyberbriefing.{daily,weekly}.laptop.plist` (08:40 **weekdays**; **Monday** weekly), and **no `pmset`**: a closed laptop can't be woken reliably, so it relies on launchd running a *missed* calendar job on the next wake ("08:40, or first wake after"). Slack delivery needs **1Password unlocked** at run time — the local-env FIFO streams no token while locked, and delivery then falls back to the markdown backup.
+- **Work laptop** (user `duncanhurwood`) — delivers to **Slack**. Has a `config.local.yaml` overriding `delivery.method` (Slack) and the scoring model. Uses `com.cyberbriefing.{daily,weekly}.laptop.plist` (08:40 **weekdays**; **Monday** weekly), and **no `pmset`**: a closed laptop can't be woken reliably, so it relies on launchd running a *missed* calendar job on the next wake ("08:40, or first wake after"). Slack delivery needs **1Password unlocked** at run time — the local-env FIFO streams no token while locked. A locked fire no longer hangs (it did until 2 Jul 2026): the `.env` load is now time-bounded, and a real run whose secrets never arrive fails fast with a `secrets_unavailable` marker so the next fire retries (see *1Password FIFO env-load hang* below).
 
 Before applying any scheduling/network reasoning, check which machine you mean: the Mac-mini sections below assume always-on; the laptop sleeps, roams, and closes its lid.
 
@@ -245,6 +245,20 @@ sudo pmset repeat wakeorpoweron MTWRFSU 06:10:00
 A real user-session wake five minutes before the launchd fire. By 06:15 the system is fully active and `getaddrinfo` works. Persists across reboots; cancel with `sudo pmset repeat cancel`; verify with `pmset -g sched`. The 07:30 fallback remains as belt-and-braces in case anything else interferes.
 
 The 4 May plist setup (Aqua, Interactive, caffeinate, cron-style schedule, idempotency) and the 30 April Bear-delivery fix are unchanged — both still required, just not on their own enough.
+
+## 1Password FIFO env-load hang — diagnosis and fix (2 July 2026)
+
+**Symptom:** the work-laptop 08:40 fire produced no briefing. Unlike a normal miss, the process had *not* exited — `ps` showed the 08:40 `briefing.py` still alive nearly an hour later, at 0% CPU, and `/tmp/cyberbriefing.{log,err}` were both **0 bytes**. Nothing had run, yet nothing had failed.
+
+**Root cause:** secrets are delivered through a 1Password **local-env FIFO** — the `.env` is a named pipe (`prw-------`), not a regular file. `briefing.py` called `load_dotenv(".env")` at **module import time, before logging was configured** (line 23). Opening a FIFO for reading **blocks until a writer attaches**; the writer is 1Password, which needs the read authorised. At an unattended fire 1Password was locked / the auth prompt went unseen, so no writer ever came and `open()` blocked **forever** — no exception, no timeout, nothing to retry. A stack sample confirmed the process parked in a single `__open` syscall under `load_dotenv`. Because this was before logging, the logs were empty; because it was before everything, not even the markdown backup was written. (The earlier note that a locked 1Password "falls back to the markdown backup" was wrong — it hung outright.)
+
+**Fix (2 July 2026, Claude claude-opus-4-8):**
+
+1. **`config_loader.load_env_with_timeout()`** — bounds each `load_dotenv` with `SIGALRM` (interrupts the blocked `open()` via EINTR — no leaked fd, so the single-reader FIFO stays retryable) and retries (`30s × 2`; a fresh open re-triggers the 1Password prompt for a present user). Returns `True` if the load completed (a missing/regular file returns instantly — so the **Mac mini is unaffected**), `False` on timeout. The call **moved from import time into `main()`, after logging** — so a future failure is visible in the log, and imports (and the test suite) are no longer at the mercy of the FIFO.
+2. **Fail-fast** — `briefing._secrets_blocked()`: a real delivery run whose env load timed out aborts *before* gather with a new `secrets_unavailable` FAILURE marker (accurate cause, not the misleading "scoring failed / API overloaded"), freeing the launchd slot so the fallback fire + next wake retry. `--stats`/`--gather-only` (no secrets needed) and `--dry-run` are exempt.
+3. **`config_loader.arm_runtime_watchdog()`** — a daemon-thread whole-process timeout (15 min) armed at the top of `main()` in both entry points, so **any** future hang (wedged HTTP, stuck scraper) can't hold a slot for an hour. A thread, not `SIGALRM`, so it never collides with (1). Caveat: the Anthropic client's per-request read timeout is 600s with a half-size retry, so a badly degraded-API scoring run could in theory approach 15 min and be killed mid-run — the fallback fire then retries.
+
+`weekly_run.py` got the same bounded load + watchdog (it had the identical import-time `load_dotenv`). All shared code, so both machines run it; the mini's always-unlocked 1Password never hits the timeout, so its behaviour is unchanged on normal days and strictly better on abnormal ones.
 
 ## All-sources-failed alarm
 

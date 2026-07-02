@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from db.state import get_connection, update_scraper_run
-from briefing import _run_scraper, _SCRAPER_REGISTRY
+from briefing import _run_scraper, _SCRAPER_REGISTRY, _secrets_blocked
 
 
 @pytest.fixture
@@ -118,3 +118,26 @@ class TestScraperRegistry:
     def test_no_duplicate_names(self):
         names = [name for name, _, _ in _SCRAPER_REGISTRY]
         assert len(names) == len(set(names))
+
+
+# ---------------------------------------------------------------------------
+# _secrets_blocked — fail-fast decision when the .env load timed out (a locked
+# 1Password FIFO). A real delivery run must abort early with an accurate
+# marker; manual/no-secret modes must still be allowed to proceed.
+# ---------------------------------------------------------------------------
+
+class TestSecretsBlocked:
+    def test_blocks_real_run_when_env_not_ready(self):
+        assert _secrets_blocked(env_ready=False, dry_run=False, gather_only=False) is True
+
+    def test_allows_real_run_when_env_ready(self):
+        assert _secrets_blocked(env_ready=True, dry_run=False, gather_only=False) is False
+
+    def test_allows_dry_run_even_when_env_not_ready(self):
+        # A manual dry-run is a preview; the scorer reports the missing key to
+        # stdout, and dry-runs must not write failure markers or change state.
+        assert _secrets_blocked(env_ready=False, dry_run=True, gather_only=False) is False
+
+    def test_allows_gather_only_even_when_env_not_ready(self):
+        # Gathering needs no secrets, so a locked laptop stays inspectable.
+        assert _secrets_blocked(env_ready=False, dry_run=False, gather_only=True) is False

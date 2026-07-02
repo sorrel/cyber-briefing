@@ -13,8 +13,6 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 import config_loader
 from db import state
 from delivery.bear import deliver_to_stdout
@@ -107,13 +105,26 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    # Load .env the same way the daily job does, if present.
-    load_dotenv(Path(__file__).parent / ".env")
+    # Whole-process backstop against any hang, and a bounded .env load — the
+    # secrets file is a 1Password FIFO that can block open() forever when
+    # locked. Mirrors briefing.py; see CLAUDE.md (2 Jul 2026).
+    watchdog = config_loader.arm_runtime_watchdog(max_seconds=900)
+    env_ready = config_loader.load_env_with_timeout(Path(__file__).parent / ".env")
+    if not env_ready and not args.dry_run:
+        _write_failure(
+            OUTPUT_DIR, date.today(),
+            "1Password did not provide secrets within the timeout (local-env "
+            "FIFO not fed — almost always locked). Aborted before summarising; "
+            "the fallback fire will retry once 1Password is unlocked.",
+        )
+        return 1
 
     config = _load_scoring_config()
     delivery_cfg = _load_delivery_config()
     conn = state.get_connection()
-    return run_weekly(OUTPUT_DIR, date.today(), args.dry_run, config, conn, delivery_cfg)
+    result = run_weekly(OUTPUT_DIR, date.today(), args.dry_run, config, conn, delivery_cfg)
+    watchdog.cancel()
+    return result
 
 
 if __name__ == "__main__":
