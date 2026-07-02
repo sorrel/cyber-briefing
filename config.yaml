@@ -198,6 +198,52 @@ sources:
       category: research
       source_name: "Latio Pulse"
 
+    # FCA — UK financial-conduct regulator. The news feed is mostly non-cyber
+    # consumer-finance regulation, so it's keyword-filtered down to the angles
+    # this briefing cares about: cyber, operational resilience, financial crime,
+    # and enforcement. Widen/trim keyword_filter if relevant items are missed.
+    fca:
+      url: "https://www.fca.org.uk/news/rss.xml"
+      category: policy
+      source_name: "FCA"
+      keyword_filter:
+        - "cyber"
+        - "security"
+        - "breach"
+        - "data"
+        - "resilience"
+        - "ransomware"
+        - "phishing"
+        - "fraud"
+        - "scam"
+        - "money laundering"
+        - "financial crime"
+        - "DORA"
+        - "third-party"
+        - "third party"
+        - "outsourc"
+        - "incident"
+        - "hack"
+        - "malware"
+        - "authentication"
+
+    # Socket — open-source supply-chain security (malicious npm/PyPI packages,
+    # dependency compromises). The advertised /rss.xml 404s / is CF-blocked; the
+    # working feed is the /api/blog/feed.atom endpoint (passes the bot UA).
+    socket:
+      url: "https://socket.dev/api/blog/feed.atom"
+      category: research
+      source_name: "Socket"
+      max_entries: 20
+
+    # Embrace The Red (Johann Rehberger) — offensive AI/LLM security research.
+    # Weighted conservatively for now via source guidance in prompt.txt.
+    embrace_the_red:
+      url: "https://embracethered.com/blog/index.xml"
+      category: research
+      source_name: "Embrace The Red"
+      max_entries: 20
+
 
   # Tier 3: Scrapers (less frequent, more fragile)
   scrapers:
