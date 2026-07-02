@@ -38,6 +38,10 @@ def _call_claude(client: anthropic.Anthropic, model: str, system_prompt: str,
     response = client.messages.create(
         model=model,
         max_tokens=MAX_TOKENS,
+        # Sonnet 5 turns adaptive thinking ON when `thinking` is omitted (it was
+        # OFF on Sonnet 4.6). Keep it off: thinking would share the MAX_TOKENS
+        # budget with the JSON payload and risk truncating it.
+        thinking={"type": "disabled"},
         system=[
             {
                 "type": "text",

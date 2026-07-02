@@ -13,11 +13,10 @@ import sys
 from datetime import date
 from pathlib import Path
 
-import yaml
-from dotenv import load_dotenv
-
+import config_loader
 from db import state
-from delivery.bear import deliver_to_bear, deliver_to_stdout
+from delivery.bear import deliver_to_stdout
+from delivery.dispatch import deliver
 from weekly.formatter import format_weekly
 from weekly.reader import read_week
 from weekly.summariser import summarise_week
@@ -25,16 +24,27 @@ from weekly.summariser import summarise_week
 logger = logging.getLogger("cyberbriefing.weekly")
 
 OUTPUT_DIR = Path(os.path.expanduser("~/cyberbriefing-output"))
-CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
 
 def _load_scoring_config() -> dict:
     """Reuse the daily scoring config block (for the model name)."""
     try:
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            return yaml.safe_load(f).get("scoring", {})
-    except (OSError, yaml.YAMLError) as e:
+        return config_loader.load_config().get("scoring", {})
+    except OSError as e:
         logger.warning("Could not load config.yaml: %s", e)
+        return {}
+
+
+def _load_delivery_config() -> dict:
+    """Load the delivery config block (method + slack channel).
+
+    Routed through config_loader so a per-machine config.local.yaml (e.g. the
+    laptop's delivery.method: slack) overrides the committed default.
+    """
+    try:
+        return config_loader.load_config().get("delivery", {})
+    except OSError as e:
+        logger.warning("Could not load delivery config: %s", e)
         return {}
 
 
@@ -50,7 +60,7 @@ def _write_failure(output_dir: Path, run_date: date, reason: str) -> None:
 
 
 def run_weekly(output_dir: Path, run_date: date, dry_run: bool,
-               config: dict, conn) -> int:
+               config: dict, conn, delivery_cfg: dict | None = None) -> int:
     """Run the weekly pipeline. Returns a process exit code."""
     if not dry_run and state.was_weekly_delivered_this_week(conn):
         logger.info("Weekly summary already delivered this week — exiting cleanly")
@@ -77,7 +87,7 @@ def run_weekly(output_dir: Path, run_date: date, dry_run: bool,
         deliver_to_stdout(title, body, tags)
         return 0
 
-    deliver_to_bear(title, body, tags)
+    deliver(delivery_cfg or {}, title, body, tags)
     state.mark_weekly_delivered(conn)
     logger.info("Weekly summary delivered: %s", title)
     return 0
@@ -95,12 +105,26 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    # Load .env the same way the daily job does, if present.
-    load_dotenv(Path(__file__).parent / ".env")
+    # Whole-process backstop against any hang, and a bounded .env load — the
+    # secrets file is a 1Password FIFO that can block open() forever when
+    # locked. Mirrors briefing.py; see CLAUDE.md (2 Jul 2026).
+    watchdog = config_loader.arm_runtime_watchdog(max_seconds=900)
+    env_ready = config_loader.load_env_with_timeout(Path(__file__).parent / ".env")
+    if not env_ready and not args.dry_run:
+        _write_failure(
+            OUTPUT_DIR, date.today(),
+            "1Password did not provide secrets within the timeout (local-env "
+            "FIFO not fed — almost always locked). Aborted before summarising; "
+            "the fallback fire will retry once 1Password is unlocked.",
+        )
+        return 1
 
     config = _load_scoring_config()
+    delivery_cfg = _load_delivery_config()
     conn = state.get_connection()
-    return run_weekly(OUTPUT_DIR, date.today(), args.dry_run, config, conn)
+    result = run_weekly(OUTPUT_DIR, date.today(), args.dry_run, config, conn, delivery_cfg)
+    watchdog.cancel()
+    return result
 
 
 if __name__ == "__main__":

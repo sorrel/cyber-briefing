@@ -8,23 +8,16 @@ Delivery strategy:
   1. If Bear is running, send the URL straight away.
   2. If Bear is not running, launch it, wait until the process has been
      alive long enough to be past its startup race, then send the URL.
-  3. Always write a markdown backup so the briefing is never lost — `open`
-     returns 0 the instant the OS accepts the URL handoff, so we cannot
-     tell if Bear actually consumed it (e.g. if Bear was shutting down for
-     a macOS update, as happened on 16 May 2026).
+
+The markdown backup is written by the dispatcher (delivery/dispatch.py) for
+every delivery method, so this module is Bear-only.
 """
 
 import logging
-import os
 import subprocess
 import sys
 import time
-from pathlib import Path
 from urllib.parse import quote
-
-# 10 (not 7) so a slightly-late daily run or a DST shift never prunes
-# Monday's backup before the Sunday-midday weekly summary reads the week.
-MARKDOWN_RETENTION_DAYS = 10
 
 # How long to wait for a cold-launched Bear to settle before sending the URL.
 # `open` returns immediately when the OS hands the URL off, so if we fire too
@@ -69,30 +62,22 @@ def _launch_bear_and_wait() -> bool:
 
 
 def deliver_to_bear(title: str, body: str, tags: list[str]) -> bool:
-    """Create a Bear note via x-callback-url; always write a markdown backup.
+    """Create a Bear note via x-callback-url. Returns True iff Bear accepted it.
 
-    The markdown backup is the only thing that survives if Bear silently
-    drops the URL (e.g. shutting down for an OS update). It is written
-    regardless of whether the x-callback-url call appears to succeed.
+    The markdown backup is written by the dispatcher (delivery/dispatch.py) for
+    every method, so this function is now Bear-only.
     """
     if sys.platform != "darwin":
-        logger.warning("Not running on macOS — falling back to markdown file")
-        return _write_markdown_file(title, body, tags)
+        logger.warning("Not running on macOS — cannot deliver to Bear")
+        return False
 
     if not _bear_is_running():
         logger.info("Bear not running — launching and waiting for it to settle")
         if not _launch_bear_and_wait():
-            logger.warning("Could not bring Bear up; relying on markdown backup")
-            return _write_markdown_file(title, body, tags)
+            logger.warning("Could not bring Bear up")
+            return False
 
-    bear_ok = _deliver_via_xcallback(title, body, tags)
-    backup_ok = _write_markdown_file(title, body, tags)
-    if not bear_ok:
-        logger.warning("Bear x-callback-url returned an error — relying on markdown backup")
-    # Success means "today's briefing is preserved somewhere". The markdown
-    # backup is enough on its own; the 06:17 / 07:30 launchd pair already gives
-    # us a second attempt at Bear delivery on bad mornings.
-    return backup_ok
+    return _deliver_via_xcallback(title, body, tags)
 
 
 def deliver_to_stdout(title: str, body: str, tags: list[str]) -> bool:
@@ -133,38 +118,3 @@ def _deliver_via_xcallback(title: str, body: str, tags: list[str]) -> bool:
     except Exception as e:
         logger.warning("x-callback-url failed: %s", e)
         return False
-
-
-def _write_markdown_file(title: str, body: str, tags: list[str]) -> bool:
-    """Write the briefing as a markdown file as a last resort."""
-    try:
-        output_dir = Path(os.path.expanduser("~/cyberbriefing-output"))
-        output_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
-        filepath = output_dir / f"{safe_name}.md"
-        tag_line = " ".join(f"#{tag}" for tag in tags)
-        content = f"# {title}\n\n{tag_line}\n\n{body}"
-        filepath.write_text(content, encoding="utf-8")
-        logger.info("Wrote markdown fallback to %s", filepath)
-        _prune_old_markdown_files(output_dir)
-        return True
-    except Exception as e:
-        logger.error("Failed to write markdown file: %s", e)
-        return False
-
-
-def _prune_old_markdown_files(output_dir: Path) -> None:
-    """Delete .md files older than MARKDOWN_RETENTION_DAYS by mtime.
-
-    Bear is the canonical store; this directory is a safety net for the case
-    where Bear delivery silently fails. Bounded retention keeps it from
-    growing unbounded.
-    """
-    cutoff = time.time() - MARKDOWN_RETENTION_DAYS * 86400
-    for path in output_dir.glob("*.md"):
-        try:
-            if path.stat().st_mtime < cutoff:
-                path.unlink()
-                logger.info("Pruned old markdown backup: %s", path.name)
-        except OSError as e:
-            logger.warning("Failed to prune %s: %s", path, e)

@@ -135,12 +135,18 @@ def parse_briefing_text(text: str, date_str: str) -> list[dict]:
 
 
 def select_week_files(output_dir: Path, run_date: date) -> tuple[list[Path], date, date]:
-    """Return the backup files for the ISO week containing run_date.
+    """Return the backup files for the most recently completed Mon→Sun week.
 
-    Monday→Sunday inclusive. Files are returned sorted oldest-first.
+    "Completed" means the week whose Sunday is the most recent Sunday on or
+    before run_date. This is schedule-agnostic across both deployments:
+    a Sunday run (home Mac mini, 12:00) targets the week ending that day, while
+    a Monday run (work laptop, 10:00) targets the week that just ended rather
+    than the empty week that starts today. Files are returned sorted
+    oldest-first.
     """
-    monday = run_date - timedelta(days=run_date.weekday())
-    sunday = monday + timedelta(days=6)
+    days_since_sunday = (run_date.weekday() + 1) % 7  # Mon=1 … Sat=6 … Sun=0
+    sunday = run_date - timedelta(days=days_since_sunday)
+    monday = sunday - timedelta(days=6)
     chosen: list[tuple[date, Path]] = []
     if output_dir.exists():
         for path in output_dir.glob("Cyber Briefing _ *.md"):

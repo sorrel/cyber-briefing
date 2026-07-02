@@ -1,6 +1,6 @@
 # Cyber Briefing Tool
 
-A daily cybersecurity intelligence briefing delivered to Bear Notes, tailored for an application security professional based in the UK.
+A daily cybersecurity intelligence briefing delivered to Bear Notes or a Slack channel, tailored for an application security professional based in the UK.
 
 ## What it does
 
@@ -8,7 +8,7 @@ Runs a three-stage pipeline every morning at 06:00:
 
 1. **Gather** — Pulls from 25+ sources: CISA KEV, NVD, HackerOne, GitHub Advisories, NCSC, The Hacker News, PortSwigger, Krebs on Security, BleepingComputer, ENISA, ICO, UK Parliament, AWS Security, Wiz, Snyk, OWASP, Risky Business, TLDR Infosec, Aikido, CloudSecList, FeistyDuck, This Week in Security, and more.
 2. **Prioritise** — Sends items to the Claude API for scoring across four dimensions (geographic relevance, domain relevance, actionability, novelty) with weights tuned for UK-based appsec work.
-3. **Deliver** — Creates a Bear Note with up to 20 prioritised items, grouped by urgency tier, with links and short annotations.
+3. **Deliver** — Delivers up to 20 prioritised items to Bear Notes or a Slack channel (configurable), grouped by urgency tier, with links and short annotations.
 
 ## Quick start
 
@@ -20,13 +20,13 @@ cd /path/to/cyberbriefing
 cp .env.example .env
 # Edit .env with your actual API keys
 
-# 3. Test with a dry run (prints to terminal instead of Bear)
+# 3. Test with a dry run (prints to terminal instead of delivering)
 uv run python briefing.py --dry-run
 
 # 4. Test just the gathering stage
 uv run python briefing.py --gather-only
 
-# 5. Full run (creates a Bear note)
+# 5. Full run (delivers to Bear or Slack, per config)
 uv run python briefing.py
 ```
 
@@ -38,7 +38,7 @@ Alongside the daily briefing, a companion job runs every **Sunday at midday** an
 
 ```bash
 uv run python weekly_run.py --dry-run   # preview to terminal
-uv run python weekly_run.py             # real run → Bear
+uv run python weekly_run.py             # real run → Bear or Slack (per config)
 ```
 
 ## Scheduling with launchd
@@ -74,15 +74,33 @@ Edit `config.yaml` to:
 - Adjust scoring weights and thresholds
 - Add new RSS feeds (just add an entry under `sources.rss_feeds`)
 - Change the target number of items per briefing
-- Switch delivery method (bear, stdout, or markdown_file)
+- Switch delivery method (bear, slack, stdout, or markdown_file)
 
 Edit `prioritiser/prompt.txt` to tune the AI scoring. This is where you adjust priorities without touching code.
+
+## Slack delivery
+
+Set `delivery.method: slack` in `config.yaml` to post the briefing to a Slack
+channel instead of Bear. Both the daily briefing and the weekly summary honour
+this setting; a dated markdown backup is still written to
+`~/cyberbriefing-output/` regardless.
+
+One-time setup:
+
+1. Create a Slack app, add the **`chat:write`** bot scope, and install it to
+   your workspace.
+2. `/invite` the bot into the target channel.
+3. Put the channel ID in `config.yaml` under `delivery.slack.channel`.
+4. Provide `SLACK_BOT_TOKEN` via your `.env` (see below).
+
+The briefing is rendered as a native Slack message; anything longer than
+Slack's per-message limit is posted as threaded replies under it.
 
 ## CLI options
 
 | Flag | Description |
 |------|-------------|
-| `--dry-run` | Full pipeline, prints to stdout instead of Bear |
+| `--dry-run` | Full pipeline, prints to stdout instead of delivering |
 | `--gather-only` | Just gather items and show counts |
 | `--stats` | Show database statistics |
 | `--verbose` / `-v` | Debug logging |
@@ -95,6 +113,7 @@ Edit `prioritiser/prompt.txt` to tune the AI scoring. This is where you adjust p
 | `HACKERONE_USERNAME` + `HACKERONE_TOKEN` | HackerOne Settings | Optional |
 | `NVD_API_KEY` | nvd.nist.gov | Optional (higher rate limits) |
 | `GITHUB_TOKEN` | GitHub Settings | Optional (for advisories) |
+| `SLACK_BOT_TOKEN` | Slack app (chat:write) | Optional (only for `delivery.method: slack`) |
 
 The tool degrades gracefully. If a key is missing, that source is skipped and logged as a warning.
 
