@@ -94,3 +94,16 @@ def strip_utm(url: str) -> str:
         return url
     clean = "&".join(p for p in parsed.query.split("&") if not p.startswith("utm_"))
     return urlunparse(parsed._replace(query=clean))
+
+
+def host_matches(url: str, domain: str) -> bool:
+    """Return True if the URL's host is exactly ``domain`` or a subdomain of it.
+
+    Use this instead of a substring check like ``domain in url``: a substring
+    test matches attacker-controlled hosts such as ``domain.evil.com`` or
+    ``notdomain.com``. This parses the URL and compares the hostname on domain
+    boundaries only.
+    """
+    host = (urlparse(url).hostname or "").lower()
+    domain = domain.lower()
+    return host == domain or host.endswith("." + domain)

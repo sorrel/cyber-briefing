@@ -12,12 +12,11 @@ import json
 import logging
 import re
 from pathlib import Path
-from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
-from .base import USER_AGENT_BROWSER, make_item, strip_utm, truncate
+from .base import USER_AGENT_BROWSER, host_matches, make_item, strip_utm, truncate
 
 logger = logging.getLogger("cyberbriefing.collectors.cloudseclist")
 
@@ -141,9 +140,11 @@ def _parse_issue(html: str, issue_n: int) -> list[dict]:
         if not raw_url.startswith("http"):
             continue
 
-        # Skip the newsletter's own site links (logo, nav, footer, etc.)
-        # Check only the netloc — every external link has utm_source=cloudseclist.com
-        if "cloudseclist.com" in urlparse(raw_url).netloc:
+        # Skip the newsletter's own site links (logo, nav, footer, etc.).
+        # Match the host on domain boundaries, not a substring — every external
+        # link carries utm_source=cloudseclist.com in its query, which a naive
+        # substring check would wrongly treat as a self-link.
+        if host_matches(raw_url, "cloudseclist.com"):
             continue
 
         url = strip_utm(raw_url)
