@@ -18,7 +18,7 @@ delivery:
   bear_tag: "security/briefing/daily"
   markdown_output_dir: "~/cyberbriefing-output"
   slack:
-    channel: "C0BE6PB6S75"   # channel ID; the bot must be invited to this channel
+    channel: "C0XXXXXXXXX"   # placeholder channel ID — set your real one in config.local.yaml (the bot must be invited to it)
 
 schedule:
   hour: 6

@@ -35,7 +35,7 @@ delivery:
   bear_tag: "security/briefing/daily"
   markdown_output_dir: "~/cyberbriefing-output"
   slack:
-    channel: "C0BE6PB6S75"  # channel ID (stable across renames); the bot must be a member
+    channel: "C0EXAMPLE01"  # channel ID (stable across renames); the bot must be a member
 ```
 
 - **Token:** `SLACK_BOT_TOKEN`, read from the environment after `load_dotenv()`.
@@ -208,7 +208,7 @@ single-reader limit is not a concern.
 
 ## 10. Resolved decisions
 
-- **Channel:** `C0BE6PB6S75`, stored in `config.yaml` under
+- **Channel:** `C0EXAMPLE01`, stored in `config.yaml` under
   `delivery.slack.channel` — in config, never in code. (Confirmed 2026-07-01.)
 - **`markdown_file` method:** kept as a first-class method (it becomes "backup
   only, no channel" now that the dispatcher writes the backup for every method).

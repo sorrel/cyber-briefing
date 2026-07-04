@@ -91,9 +91,9 @@ def test_select_week_files_picks_monday_to_sunday(tmp_path):
 
 
 def test_select_week_files_monday_picks_previous_week(tmp_path):
-    # On the laptop the summary runs Monday 10:00. A Monday run must summarise
-    # the week that just ENDED (Mon 2026-06-15 .. Sun 2026-06-21), not the new
-    # week that starts today (which is empty).
+    # When the summary runs on a Monday, it must summarise the week that just
+    # ENDED (Mon 2026-06-15 .. Sun 2026-06-21), not the new week that starts
+    # today (which is empty).
     names = [
         "Cyber Briefing _ 2026-06-15.md",  # previous Monday — included
         "Cyber Briefing _ 2026-06-19.md",  # included

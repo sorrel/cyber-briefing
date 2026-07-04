@@ -5,7 +5,7 @@
 
 set -u
 
-REPO="/Users/duncan/Developer/scripts/cyberbriefing"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLIST_INSTALLED="$HOME/Library/LaunchAgents/com.cyberbriefing.daily.plist"
 PLIST_REPO="$REPO/com.cyberbriefing.daily.plist"
 LABEL="com.cyberbriefing.daily"
@@ -55,7 +55,7 @@ check_agent() {
     spawn=$(printf '%s\n' "$print" | awk -F'= ' '/spawn type/ {print $2; exit}')
     case "$spawn" in
         "interactive (4)") ok "spawn type = interactive (4) — correct Aqua context" ;;
-        *) bad "spawn type = ${spawn:-unknown} — needs interactive (4); was the 4 May regression" ;;
+        *) bad "spawn type = ${spawn:-unknown} — needs interactive (4) for a working DNS/mach-port context" ;;
     esac
 
     last_exit=$(printf '%s\n' "$print" | awk -F'= ' '/last exit code/ {print $2; exit}')
@@ -66,7 +66,7 @@ check_agent() {
     fi
 }
 
-hdr "1. TripMode (known cause of EBADF on 2026-05-15)"
+hdr "1. TripMode / network extensions (a known cause of EBADF)"
 if pgrep -xq TripMode; then
     warn "TripMode is running — verify uv/python are allowed on this network"
     echo "    The real test is the uv DNS probe below; if that passes, you're fine."
@@ -74,7 +74,7 @@ else
     ok "TripMode not running"
 fi
 
-hdr "2. Bear (delivery target)"
+hdr "2. Bear (only relevant if delivery.method = bear)"
 if pgrep -xq Bear; then
     ok "Bear is running"
 else
@@ -82,10 +82,10 @@ else
 fi
 
 hdr "3. pmset wake schedule (06:10 user-session wake — fixes dark-wake EBADF)"
-if pmset -g sched 2>/dev/null | grep -q "wakepoweron at 6:10AM every day"; then
-    ok "Daily 06:10 wakepoweron is set"
+if pmset -g sched 2>/dev/null | grep -q "wakepoweron at 6:10AM"; then
+    ok "06:10 wakepoweron is set"
 else
-    bad "06:10 daily wake is NOT scheduled — run: sudo pmset repeat wakeorpoweron MTWRFSU 06:10:00"
+    bad "06:10 wake is NOT scheduled — run: sudo pmset repeat wakeorpoweron MTWRF 06:10:00"
 fi
 
 hdr "4. Daily launchd agent (06:15 / 07:30)"

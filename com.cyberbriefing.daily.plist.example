@@ -5,21 +5,37 @@
     <key>Label</key>
     <string>com.cyberbriefing.daily</string>
 
-    <!-- Cron-style: launchd starts a fresh process at each calendar slot.
+    <!-- ALWAYS-ON DESKTOP archetype (a Mac that stays powered on 24/7).
+
+         Copy this file to com.cyberbriefing.daily.plist (the real file is
+         gitignored) and replace the two placeholders:
+           __PROJECT_DIR__  → absolute path to your clone of this repo
+           __USER__         → your macOS short username (for the PATH below)
+
+         Cron-style: launchd starts a fresh process at each calendar slot.
          Pinned to the Aqua user GUI session so getaddrinfo / mDNSResponder
-         have full mach-port access (the EBADF at 06:00 was a wrong-context
-         spawn problem, not a network problem).
+         have full mach-port access (a background/daemon spawn context makes
+         getaddrinfo return EBADF at name-lookup — it presents as a network
+         failure but is really a wrong-context spawn).
 
          06:15 is the primary fire. 07:30 is an idempotent fallback —
          briefing.py checks state.db and exits cleanly if today is already
          delivered, so the second fire is a no-op on good days.
 
-         Weekday 1–6 = Monday–Saturday only; Sunday (0/7) is deliberately
-         omitted, so the daily briefing does not run on Sundays. The weekly
+         Weekday 1–5 = Monday–Friday only; Saturday (6) and Sunday (0/7) are
+         omitted, so the daily briefing does not run at weekends. The weekly
          summary (com.cyberbriefing.weekly) covers Sunday instead.
 
          caffeinate -is keeps the system out of any idle/sleep transition
-         while the briefing runs, ensuring the network stack stays fully up. -->
+         while the briefing runs, ensuring the network stack stays fully up.
+
+         An always-on Mac still drops into a reduced "dark wake" overnight in
+         which user-session services (mDNSResponder) are gated, so getaddrinfo
+         can fail at an early fire. Schedule a real user-session wake a few
+         minutes before the primary fire:
+           sudo pmset repeat wakeorpoweron MTWRF 06:10:00
+         (A laptop that sleeps with the lid closed cannot be woken this way;
+         use the .laptop.plist.example archetype there instead.) -->
 
     <key>ProgramArguments</key>
     <array>
@@ -28,7 +44,7 @@
         <string>/opt/homebrew/bin/uv</string>
         <string>run</string>
         <string>--directory</string>
-        <string>/Users/duncan/Developer/scripts/cyberbriefing</string>
+        <string>__PROJECT_DIR__</string>
         <string>python</string>
         <string>briefing.py</string>
     </array>
@@ -77,14 +93,6 @@
         </dict>
         <dict>
             <key>Weekday</key>
-            <integer>6</integer>
-            <key>Hour</key>
-            <integer>6</integer>
-            <key>Minute</key>
-            <integer>15</integer>
-        </dict>
-        <dict>
-            <key>Weekday</key>
             <integer>1</integer>
             <key>Hour</key>
             <integer>7</integer>
@@ -123,14 +131,6 @@
             <key>Minute</key>
             <integer>30</integer>
         </dict>
-        <dict>
-            <key>Weekday</key>
-            <integer>6</integer>
-            <key>Hour</key>
-            <integer>7</integer>
-            <key>Minute</key>
-            <integer>30</integer>
-        </dict>
     </array>
 
     <key>RunAtLoad</key>
@@ -151,7 +151,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/duncan/.local/bin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/__USER__/.local/bin</string>
     </dict>
 </dict>
 </plist>

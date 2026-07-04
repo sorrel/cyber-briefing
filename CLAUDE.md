@@ -6,16 +6,23 @@ A Python pipeline that runs daily to produce a prioritised cybersecurity briefin
 
 ## Deployment environment
 
-This tool runs on **two machines from the same git repo**. Per-machine differences are isolated to a gitignored `config.local.yaml` (delivery method) and separate launchd plists (schedule + paths); the shared code and `config.yaml` are identical on both.
+The tool runs from a git clone, scheduled by macOS launchd. Everything committed is generic; anything specific to a host — delivery method, scoring model, Slack channel, launchd schedule + paths — lives in files that are **gitignored** and copied from committed `*.example` templates:
 
-- **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. Has a `config.local.yaml` that sets `delivery.method: bear` explicitly (matching the committed default) and overrides `scoring.model` to **Haiku 4.5** (~3× cheaper than the committed Sonnet 4.6). Uses `com.cyberbriefing.{daily,weekly}.plist` (06:15 daily, **Monday–Saturday** — no Sunday daily; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
-- **Work laptop** (user `duncanhurwood`) — delivers to **Slack**. Has a `config.local.yaml` overriding `delivery.method` (Slack) and the scoring model. Uses `com.cyberbriefing.{daily,weekly}.laptop.plist` (08:40 **weekdays**; **Monday** weekly), and **no `pmset`**: a closed laptop can't be woken reliably, so it relies on launchd running a *missed* calendar job on the next wake ("08:40, or first wake after"). Slack delivery needs **1Password unlocked** at run time — the local-env FIFO streams no token while locked. A locked fire no longer hangs (it did until 2 Jul 2026): the `.env` load is now time-bounded, and a real run whose secrets never arrive fails fast with a `secrets_unavailable` marker so the next fire retries (see *1Password FIFO env-load hang* below).
+- `config.local.yaml` (from `config.local.yaml.example`) — deep-merged over `config.yaml`; sets `delivery.method`, `scoring.model`, `delivery.slack.channel`.
+- `com.cyberbriefing.*.plist` (from `com.cyberbriefing.*.plist.example`) — the launchd agents; fill in the `__PROJECT_DIR__` / `__USER__` placeholders.
 
-Before applying any scheduling/network reasoning, check which machine you mean: the Mac-mini sections below assume always-on; the laptop sleeps, roams, and closes its lid.
+This keeps the repo forkable — nothing about any particular host lives in git.
+
+Two scheduling archetypes ship as templates; pick whichever matches the host:
+
+- **Always-on desktop** (`com.cyberbriefing.{daily,weekly}.plist.example`) — a Mac left powered on. Early daily fire (06:15, Mon–Fri) plus a `pmset` wake, because an idle always-on Mac drops into a "dark wake" state where DNS fails (see *Recurring 06:00 EBADF bug* below); Sunday weekly at midday. **The always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to this archetype.**
+- **Sleeping laptop** (`com.cyberbriefing.{daily,weekly}.laptop.plist.example`) — a machine that sleeps with the lid closed. Later daily fire (08:40 weekdays), **no `pmset`** (a closed lid can't be woken reliably, so launchd runs the *missed* calendar job on the next wake), Monday weekly. If it delivers to Slack, the secrets manager must be unlocked at run time — a locked 1Password local-env FIFO streams no token. A locked fire no longer hangs: the `.env` load is time-bounded, and a real run whose secrets never arrive fails fast with a `secrets_unavailable` marker so the next fire retries (see *1Password FIFO env-load hang* below).
+
+Before applying any scheduling/network reasoning, note which archetype you mean: the always-on sections assume the machine never sleeps; the laptop archetype sleeps, roams, and closes its lid.
 
 ## Per-machine config (`config.local.yaml`)
 
-`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that key, leaving `delivery.slack.channel` intact). Both `briefing.py` and `weekly_run.py` load config through it. A machine with no local file would fall back to the committed defaults, but in practice **both** machines have one and drive their delivery target and scoring model from it rather than leaning on an implicit default: the mini's sets `delivery.method: bear` + `scoring.model` to Haiku 4.5; the laptop's sets `delivery.method: slack` + its own scoring model (Sonnet 4.6). This is how one repo drives Bear + Haiku on the mini and Slack + Sonnet on the laptop, without diverging committed files or branches.
+`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that key, leaving the rest of the `delivery` block intact). Both `briefing.py` and `weekly_run.py` load config through it. A machine with no local file falls back to the committed defaults. Because `config.yaml` ships only a placeholder Slack channel (`C0XXXXXXXXX`), a machine delivering to Slack must set the real `delivery.slack.channel` in its `config.local.yaml`, or delivery has nowhere to post. A committed `config.local.yaml.example` documents the shape. This lets one clone drive different delivery targets and scoring models on different machines without diverging committed files or branches.
 
 ## Running it
 
@@ -38,7 +45,7 @@ pinned in `.python-version`. Dependabot tracks the `uv` ecosystem, not pip.
 ```
 briefing.py          ← Entry point (CLI: --dry-run, --gather-only, --stats, -v)
 config.yaml          ← All source URLs, scoring weights, thresholds (edit me)
-config.local.yaml    ← Per-machine overrides, gitignored (laptop: delivery.method slack)
+config.local.yaml    ← Per-machine overrides, gitignored (copied from config.local.yaml.example)
 config_loader.py     ← Loads config.yaml, deep-merges config.local.yaml over it
 prioritiser/
   prompt.txt         ← Claude scoring rubric (edit me to tune output)
@@ -110,9 +117,9 @@ Edit `config.yaml`:
 
 ## Scheduling
 
-> This section describes the **home Mac mini** (`com.cyberbriefing.*.plist`). The **work laptop** uses `com.cyberbriefing.*.laptop.plist` — 08:40 on weekdays (`Weekday` 1–5), Monday 10:00 weekly, laptop paths, and **no `pmset`** (it relies on launchd firing the missed calendar job on the next wake, since a closed lid can't be woken). Install those the same way, substituting the `.laptop.plist` filenames. Everything else (Aqua/Interactive/`caffeinate`/idempotency) is identical.
+> This section uses the **always-on desktop** templates (`com.cyberbriefing.*.plist`). The **sleeping-laptop** templates (`com.cyberbriefing.*.laptop.plist`) differ only in schedule (08:40 weekdays, `Weekday` 1–5; Monday 10:00 weekly) and drop the `pmset` wake — a closed lid can't be woken, so launchd fires the missed calendar job on the next wake. Install them the same way, substituting the `.laptop.plist` filenames. Everything else (Aqua/Interactive/`caffeinate`/idempotency) is identical.
 
-Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. The schedule runs **Monday–Saturday only** (`Weekday` 1–6 on every slot); Sunday is deliberately omitted so only the weekly summary runs that day. Two slots per day:
+Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. The schedule runs **Monday–Friday only** (`Weekday` 1–5 on every slot); Saturday and Sunday are deliberately omitted — the weekend has no daily briefing, and the weekly summary runs on Sunday. Two slots per day:
 
 - **06:15** — primary fire.
 - **07:30** — idempotent fallback. `briefing.py` checks `state.db` (`was_delivered_today()`) and exits cleanly if today's briefing has already been delivered, so this is a no-op on good days and the only thing that runs on bad days.
@@ -124,11 +131,19 @@ The plist is hardened for correct user GUI context — this is what the previous
 - `RunAtLoad = false` — fires only on schedule.
 - Wrapped in `caffeinate -is` — keeps the system out of any idle/sleep transition during the run.
 
-The plist also requires the system to be in a real wake state at the schedule time. Even on the always-on Mac mini, macOS keeps the user session in a degraded "dark wake" overnight that breaks `getaddrinfo` with EBADF (see the *Recurring 06:00 EBADF bug — actual fix (9 May 2026)* section). A `pmset repeat` schedules a real user-session wake at 06:10, five minutes before the primary fire.
+The plist also requires the system to be in a real wake state at the schedule time. Even on an always-on Mac, macOS keeps the user session in a degraded "dark wake" overnight that breaks `getaddrinfo` with EBADF (see the *Recurring 06:00 EBADF bug — actual fix (9 May 2026)* section). A `pmset repeat` schedules a real user-session wake at 06:10, five minutes before the primary fire.
 
 ```bash
-# One-time: schedule a real daily wake five minutes before the primary fire.
-sudo pmset repeat wakeorpoweron MTWRFSU 06:10:00
+# First time only: the real com.cyberbriefing.daily.plist is gitignored, so
+# create it from the committed template and fill in __PROJECT_DIR__ / __USER__.
+# (Skip if you already have the real plist on this machine.)
+cp com.cyberbriefing.daily.plist.example com.cyberbriefing.daily.plist
+# ...then edit the two placeholders in the copy.
+
+# One-time: schedule a real daily wake five minutes before the primary fire
+# (Mon–Fri, matching the daily schedule; the Sunday weekly runs at noon and
+# needs no early wake).
+sudo pmset repeat wakeorpoweron MTWRF 06:10:00
 # Verify
 pmset -g sched
 
@@ -150,7 +165,7 @@ tail -f /tmp/cyberbriefing.err
 
 ## Weekly summary 🗓️
 
-A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and rolls the week's daily briefings into one Bear note — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories. (Backup retention was raised 7 → 10 days so Sunday always sees the full week.) The **laptop** runs this **Monday 10:00** instead; `weekly/reader.py: select_week_files` targets the **most recently completed Mon→Sun week**, so both a Sunday run (mini) and a Monday run (laptop) summarise the week that just ended — not the empty week starting today.
+A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and rolls the week's daily briefings into one weekly summary — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories. (Backup retention was raised 7 → 10 days so Sunday always sees the full week.) The sleeping-laptop archetype runs this **Monday 10:00** instead; `weekly/reader.py: select_week_files` targets the **most recently completed Mon→Sun week**, so both a Sunday run and a Monday run summarise the week that just ended — not the empty week starting today.
 
 ```bash
 uv run python weekly_run.py --dry-run   # → stdout, no state changes
@@ -163,17 +178,16 @@ uv run python weekly_run.py             # → Bear or Slack (per delivery.method
 
 ## Slack delivery
 
-Set `delivery.method: slack` to deliver to a Slack channel instead of Bear.
-On the multi-machine setup this lives in the laptop's gitignored
-`config.local.yaml` (see *Per-machine config* above), not in the shared
-`config.yaml` (which stays `bear` for the mini). Applies to both the daily
-(`briefing.py`) and weekly (`weekly_run.py`) pipelines, which both route
-through `delivery/dispatch.py`.
+Set `delivery.method: slack` to deliver to a Slack channel instead of Bear —
+typically in a machine's gitignored `config.local.yaml` (see *Per-machine
+config* above), so the shared `config.yaml` default is untouched. Applies to
+both the daily (`briefing.py`) and weekly (`weekly_run.py`) pipelines, which
+both route through `delivery/dispatch.py`.
 
 - **Auth:** `SLACK_BOT_TOKEN` (env, via the 1Password local env file). Only
   the `chat:write` bot scope is needed; the bot must be invited to the channel.
-- **Channel:** `delivery.slack.channel` in `config.yaml` (a channel ID; never
-  hardcoded in Python).
+- **Channel:** `delivery.slack.channel` — a channel ID set in `config.local.yaml`
+  (`config.yaml` ships only a placeholder); never hardcoded in Python.
 - **Rendering:** `delivery/slack_format.py` converts the briefing markdown to
   Slack Block Kit — note Slack's `*bold*` / `_italic_` is the inverse of our
   markdown's `*italic*`, which the converter remaps. Long briefings overflow
@@ -190,7 +204,7 @@ through `delivery/dispatch.py`.
 
 ## Bear delivery bug — investigation and fix (30 April 2026)
 
-**Symptom:** Briefing pipeline ran cleanly at 06:04, logs said "Delivered to Bear via x-callback-url", but the note did not appear until the user opened their Mac later that morning.
+**Symptom:** Briefing pipeline ran cleanly at 06:04, logs said "Delivered to Bear via x-callback-url", but the note did not appear until the Mac was next opened later that morning.
 
 **Root cause:** `open bear://x-callback-url/create?...` returns exit code 0 as soon as macOS dispatches the URL — before Bear processes it. When Bear is not already running, `open` cold-launches it. If the screen is locked or the user is away, Bear may not properly handle the callback during startup (URL dropped or silently queued). The code treated `open` exit 0 as confirmed delivery, so no fallback was triggered. Confirmed by `ps -eo lstart,command | grep Bear`: Bear process started at exactly 06:04:27, the same instant as the `open` call.
 
@@ -240,12 +254,12 @@ The previous Bear-delivery fix (markdown backup, AppleScript fallback) is unchan
 
 The 4 May plist rewrite (Aqua / Interactive / `caffeinate -is`) was necessary but **not sufficient**. On 9 May 2026 both the 06:15 and 07:30 fires hit EBADF on every source, despite `launchctl print` confirming `spawn type = interactive (4)`. Within seconds of the user touching the Mac, the same pipeline ran cleanly with the same launchd setup — proving the launchd-context theory was incomplete.
 
-**Actual root cause:** macOS keeps the Mac mini in a reduced "dark wake" overnight even though the machine is on 24/7. In that state, user-session services like `mDNSResponder` are gated; `getaddrinfo` returns EBADF because its mach-port endpoint is not usable. `caffeinate -is` only blocks *new* idle/sleep transitions during the run — it does nothing to restore a session that is already in a degraded state when the script starts.
+**Actual root cause:** macOS keeps an always-on Mac in a reduced "dark wake" overnight even though the machine is powered on. In that state, user-session services like `mDNSResponder` are gated; `getaddrinfo` returns EBADF because its mach-port endpoint is not usable. `caffeinate -is` only blocks *new* idle/sleep transitions during the run — it does nothing to restore a session that is already in a degraded state when the script starts.
 
 **Fix (9 May 2026, Claude claude-opus-4-7):**
 
 ```bash
-sudo pmset repeat wakeorpoweron MTWRFSU 06:10:00
+sudo pmset repeat wakeorpoweron MTWRF 06:10:00
 ```
 
 A real user-session wake five minutes before the launchd fire. By 06:15 the system is fully active and `getaddrinfo` works. Persists across reboots; cancel with `sudo pmset repeat cancel`; verify with `pmset -g sched`. The 07:30 fallback remains as belt-and-braces in case anything else interferes.
@@ -254,17 +268,17 @@ The 4 May plist setup (Aqua, Interactive, caffeinate, cron-style schedule, idemp
 
 ## 1Password FIFO env-load hang — diagnosis and fix (2 July 2026)
 
-**Symptom:** the work-laptop 08:40 fire produced no briefing. Unlike a normal miss, the process had *not* exited — `ps` showed the 08:40 `briefing.py` still alive nearly an hour later, at 0% CPU, and `/tmp/cyberbriefing.{log,err}` were both **0 bytes**. Nothing had run, yet nothing had failed.
+**Symptom:** the 08:40 fire produced no briefing. Unlike a normal miss, the process had *not* exited — `ps` showed the 08:40 `briefing.py` still alive nearly an hour later, at 0% CPU, and `/tmp/cyberbriefing.{log,err}` were both **0 bytes**. Nothing had run, yet nothing had failed.
 
 **Root cause:** secrets are delivered through a 1Password **local-env FIFO** — the `.env` is a named pipe (`prw-------`), not a regular file. `briefing.py` called `load_dotenv(".env")` at **module import time, before logging was configured** (line 23). Opening a FIFO for reading **blocks until a writer attaches**; the writer is 1Password, which needs the read authorised. At an unattended fire 1Password was locked / the auth prompt went unseen, so no writer ever came and `open()` blocked **forever** — no exception, no timeout, nothing to retry. A stack sample confirmed the process parked in a single `__open` syscall under `load_dotenv`. Because this was before logging, the logs were empty; because it was before everything, not even the markdown backup was written. (The earlier note that a locked 1Password "falls back to the markdown backup" was wrong — it hung outright.)
 
 **Fix (2 July 2026, Claude claude-opus-4-8):**
 
-1. **`config_loader.load_env_with_timeout()`** — bounds each `load_dotenv` with `SIGALRM` (interrupts the blocked `open()` via EINTR — no leaked fd, so the single-reader FIFO stays retryable) and retries (`30s × 2`; a fresh open re-triggers the 1Password prompt for a present user). Returns `True` if the load completed (a missing/regular file returns instantly — so the **Mac mini is unaffected**), `False` on timeout. The call **moved from import time into `main()`, after logging** — so a future failure is visible in the log, and imports (and the test suite) are no longer at the mercy of the FIFO.
+1. **`config_loader.load_env_with_timeout()`** — bounds each `load_dotenv` with `SIGALRM` (interrupts the blocked `open()` via EINTR — no leaked fd, so the single-reader FIFO stays retryable) and retries (`30s × 2`; a fresh open re-triggers the 1Password prompt for a present user). Returns `True` if the load completed (a missing/regular file returns instantly — so a machine reading a plain, non-FIFO `.env` is unaffected), `False` on timeout. The call **moved from import time into `main()`, after logging** — so a future failure is visible in the log, and imports (and the test suite) are no longer at the mercy of the FIFO.
 2. **Fail-fast** — `briefing._secrets_blocked()`: a real delivery run whose env load timed out aborts *before* gather with a new `secrets_unavailable` FAILURE marker (accurate cause, not the misleading "scoring failed / API overloaded"), freeing the launchd slot so the fallback fire + next wake retry. `--stats`/`--gather-only` (no secrets needed) and `--dry-run` are exempt.
 3. **`config_loader.arm_runtime_watchdog()`** — a daemon-thread whole-process timeout (15 min) armed at the top of `main()` in both entry points, so **any** future hang (wedged HTTP, stuck scraper) can't hold a slot for an hour. A thread, not `SIGALRM`, so it never collides with (1). Caveat: the Anthropic client's per-request read timeout is 600s with a half-size retry, so a badly degraded-API scoring run could in theory approach 15 min and be killed mid-run — the fallback fire then retries.
 
-`weekly_run.py` got the same bounded load + watchdog (it had the identical import-time `load_dotenv`). All shared code, so both machines run it; the mini's always-unlocked 1Password never hits the timeout, so its behaviour is unchanged on normal days and strictly better on abnormal ones.
+`weekly_run.py` got the same bounded load + watchdog (it had the identical import-time `load_dotenv`). It's all shared code: a machine with an always-unlocked 1Password (or a plain `.env`) never hits the timeout, so behaviour is unchanged on normal days and strictly better on abnormal ones.
 
 ## All-sources-failed alarm
 

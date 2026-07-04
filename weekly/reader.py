@@ -138,9 +138,8 @@ def select_week_files(output_dir: Path, run_date: date) -> tuple[list[Path], dat
     """Return the backup files for the most recently completed Mon→Sun week.
 
     "Completed" means the week whose Sunday is the most recent Sunday on or
-    before run_date. This is schedule-agnostic across both deployments:
-    a Sunday run (home Mac mini, 12:00) targets the week ending that day, while
-    a Monday run (work laptop, 10:00) targets the week that just ended rather
+    before run_date. This is schedule-agnostic: a Sunday run targets the week
+    ending that day, while a Monday run targets the week that just ended rather
     than the empty week that starts today. Files are returned sorted
     oldest-first.
     """

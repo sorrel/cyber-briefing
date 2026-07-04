@@ -135,8 +135,8 @@ ordered most → least important.
 - Two `StartCalendarInterval` slots: **Sunday 12:00** primary,
   **Sunday 13:30** idempotent fallback. `weekly.py` exits cleanly at the top if
   `was_weekly_delivered_this_week()`.
-- No `pmset` wake needed — at midday the Mac mini is fully awake (the dark-wake
-  EBADF problem is a 06:00-only issue).
+- No `pmset` wake needed — at midday an always-on Mac is fully awake (the
+  dark-wake EBADF problem is a 06:00-only issue).
 - Logs to `/tmp/cyberbriefing-weekly.log` / `.err`.
 
 ## Error handling

@@ -14,7 +14,7 @@ class FakeResp:
         return self._payload
 
 
-CFG = {"channel": "C0BE6PB6S75"}
+CFG = {"channel": "C0EXAMPLE01"}
 
 
 def test_missing_token_returns_false(monkeypatch):
@@ -47,7 +47,7 @@ def test_single_message_posts_parent(monkeypatch):
 
     assert deliver_to_slack("Cyber Briefing", "body", [], CFG) is True
     assert len(calls) == 1
-    assert calls[0]["channel"] == "C0BE6PB6S75"
+    assert calls[0]["channel"] == "C0EXAMPLE01"
     assert calls[0]["text"] == "Cyber Briefing"
     assert "blocks" in calls[0]
     assert "thread_ts" not in calls[0]
