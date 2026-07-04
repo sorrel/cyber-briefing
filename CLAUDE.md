@@ -8,7 +8,7 @@ A Python pipeline that runs daily to produce a prioritised cybersecurity briefin
 
 This tool runs on **two machines from the same git repo**. Per-machine differences are isolated to a gitignored `config.local.yaml` (delivery method) and separate launchd plists (schedule + paths); the shared code and `config.yaml` are identical on both.
 
-- **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. No `config.local.yaml`, so it keeps the committed default `delivery.method: bear`. Uses `com.cyberbriefing.{daily,weekly}.plist` (06:15 daily, all week; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
+- **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. No `config.local.yaml`, so it keeps the committed default `delivery.method: bear`. Uses `com.cyberbriefing.{daily,weekly}.plist` (06:15 daily, **Monday–Saturday** — no Sunday daily; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
 - **Work laptop** (user `duncanhurwood`) — delivers to **Slack**. Has a `config.local.yaml` overriding `delivery.method` (Slack) and the scoring model. Uses `com.cyberbriefing.{daily,weekly}.laptop.plist` (08:40 **weekdays**; **Monday** weekly), and **no `pmset`**: a closed laptop can't be woken reliably, so it relies on launchd running a *missed* calendar job on the next wake ("08:40, or first wake after"). Slack delivery needs **1Password unlocked** at run time — the local-env FIFO streams no token while locked. A locked fire no longer hangs (it did until 2 Jul 2026): the `.env` load is now time-bounded, and a real run whose secrets never arrive fails fast with a `secrets_unavailable` marker so the next fire retries (see *1Password FIFO env-load hang* below).
 
 Before applying any scheduling/network reasoning, check which machine you mean: the Mac-mini sections below assume always-on; the laptop sleeps, roams, and closes its lid.
@@ -106,7 +106,7 @@ Edit `config.yaml`:
 
 > This section describes the **home Mac mini** (`com.cyberbriefing.*.plist`). The **work laptop** uses `com.cyberbriefing.*.laptop.plist` — 08:40 on weekdays (`Weekday` 1–5), Monday 10:00 weekly, laptop paths, and **no `pmset`** (it relies on launchd firing the missed calendar job on the next wake, since a closed lid can't be woken). Install those the same way, substituting the `.laptop.plist` filenames. Everything else (Aqua/Interactive/`caffeinate`/idempotency) is identical.
 
-Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. Two slots:
+Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. The schedule runs **Monday–Saturday only** (`Weekday` 1–6 on every slot); Sunday is deliberately omitted so only the weekly summary runs that day. Two slots per day:
 
 - **06:15** — primary fire.
 - **07:30** — idempotent fallback. `briefing.py` checks `state.db` (`was_delivered_today()`) and exits cleanly if today's briefing has already been delivered, so this is a no-op on good days and the only thing that runs on bad days.
