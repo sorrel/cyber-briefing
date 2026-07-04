@@ -34,7 +34,7 @@ This project uses [uv](https://github.com/astral-sh/uv) for dependency managemen
 
 ## Weekly summary 🗓️
 
-Alongside the daily briefing, a companion job runs every **Sunday at midday** and rolls the week's briefings into a single **Weekly Cyber Summary** Bear note 📝. It reads the daily backups, skips the raw CVE list, and asks Claude to dedupe, rank and summarise the week's best reads — blogs, tools and new techniques — down to the top ~8–12 stories.
+Alongside the daily briefing, a companion job runs every **Sunday at midday** and rolls the week's briefings into a single **Weekly Cyber Summary** 📝, delivered to Bear or Slack just like the daily briefing. It reads the daily backups, skips the raw CVE list, and asks Claude to dedupe, rank and summarise the week's best reads — blogs, tools and new techniques — down to the top ~8–12 stories.
 
 ```bash
 uv run python weekly_run.py --dry-run   # preview to terminal
