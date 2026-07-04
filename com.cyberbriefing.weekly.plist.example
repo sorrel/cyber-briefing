@@ -5,10 +5,18 @@
     <key>Label</key>
     <string>com.cyberbriefing.weekly</string>
 
-    <!-- Cron-style: launchd starts a fresh process at each calendar slot.
+    <!-- ALWAYS-ON DESKTOP weekly summary (pairs with the daily archetype).
+
+         Copy this file to com.cyberbriefing.weekly.plist (the real file is
+         gitignored) and replace the two placeholders:
+           __PROJECT_DIR__  → absolute path to your clone of this repo
+           __USER__         → your macOS short username (for the PATH below)
+
+         Cron-style: launchd starts a fresh process at each calendar slot.
          Pinned to the Aqua user GUI session so getaddrinfo / mDNSResponder
-         have full mach-port access (the EBADF at 06:00 was a wrong-context
-         spawn problem, not a network problem).
+         have full mach-port access (a background/daemon spawn context makes
+         getaddrinfo return EBADF at name-lookup — it looks like a network
+         failure but is really a wrong-context spawn).
 
          12:00 Sunday is the primary fire. 13:30 Sunday is an idempotent
          fallback — weekly_run.py checks state.db and exits cleanly if this
@@ -26,7 +34,7 @@
         <string>/opt/homebrew/bin/uv</string>
         <string>run</string>
         <string>--directory</string>
-        <string>/Users/duncan/Developer/scripts/cyberbriefing</string>
+        <string>__PROJECT_DIR__</string>
         <string>python</string>
         <string>weekly_run.py</string>
     </array>
@@ -69,7 +77,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/duncan/.local/bin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/__USER__/.local/bin</string>
     </dict>
 </dict>
 </plist>

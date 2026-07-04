@@ -5,14 +5,21 @@
     <key>Label</key>
     <string>com.cyberbriefing.weekly</string>
 
-    <!-- WORK LAPTOP variant (user duncanhurwood; delivers to Slack via
-         config.local.yaml). Differs from the always-on Mac mini plist:
+    <!-- SLEEPING LAPTOP weekly summary (pairs with the sleeping-laptop daily).
+
+         Copy this file to com.cyberbriefing.weekly.laptop.plist (the real file
+         is gitignored) and replace the two placeholders:
+           __PROJECT_DIR__  → absolute path to your clone of this repo
+           __USER__         → your macOS short username (for the PATH below)
+
+         Differs from the always-on desktop weekly
+         (com.cyberbriefing.weekly.plist.example):
 
          - Fires MONDAY 10:00 (Weekday 1), not Sunday 12:00, with an idempotent
            11:00 fallback: weekly_run.py checks state.db
            (was_weekly_delivered_this_week) and exits cleanly if 10:00 already
            delivered, so the second slot is a no-op on good weeks and a ~1h
-           retry on bad ones. The laptop is closed at weekends, so the summary
+           retry on bad ones. A laptop is closed at weekends, so the summary
            runs on the first weekday. The reader (weekly/reader.py) targets the
            most recently COMPLETED Mon-Sun week, so a Monday run summarises the
            week that just ended.
@@ -27,7 +34,7 @@
         <string>/opt/homebrew/bin/uv</string>
         <string>run</string>
         <string>--directory</string>
-        <string>/Users/duncanhurwood/Documents/Program/github/cyber-briefing</string>
+        <string>__PROJECT_DIR__</string>
         <string>python</string>
         <string>weekly_run.py</string>
     </array>
@@ -65,7 +72,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/duncanhurwood/.local/bin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/__USER__/.local/bin</string>
     </dict>
 </dict>
 </plist>

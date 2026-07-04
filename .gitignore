@@ -1,5 +1,13 @@
 .env
 config.local.yaml
+
+# Real launchd plists carry per-machine paths/username/schedule and are
+# gitignored. Only the generic *.plist.example templates are committed —
+# copy one and fill in __PROJECT_DIR__ / __USER__. (*.plist does not match
+# *.plist.example, so the templates stay tracked; the negation is belt-and-braces.)
+*.plist
+!*.plist.example
+
 *.pyc
 __pycache__/
 .venv/

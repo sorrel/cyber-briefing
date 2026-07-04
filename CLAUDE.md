@@ -6,16 +6,16 @@ A Python pipeline that runs daily to produce a prioritised cybersecurity briefin
 
 ## Deployment environment
 
-This tool runs on **two machines from the same git repo**. Per-machine differences are isolated to a gitignored `config.local.yaml` (delivery method) and separate launchd plists (schedule + paths); the shared code and `config.yaml` are identical on both.
+This tool runs on **two machines from the same git repo**. Per-machine differences are isolated to a gitignored `config.local.yaml` (delivery method, scoring model, real Slack channel) and gitignored launchd plists (schedule + paths); the shared code and `config.yaml` are identical on both. The plists and `config.local.yaml` are **not committed** — each is copied on the machine from a committed `*.example` template (`com.cyberbriefing.*.plist.example`, `config.local.yaml.example`) and filled in (`__PROJECT_DIR__` / `__USER__`). This keeps the repo forkable: nothing machine-specific lives in git.
 
-- **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. Has a `config.local.yaml` that sets `delivery.method: bear` explicitly (matching the committed default) and overrides `scoring.model` to **Haiku 4.5** (~3× cheaper than the committed Sonnet 4.6). Uses `com.cyberbriefing.{daily,weekly}.plist` (06:15 daily, **Monday–Saturday** — no Sunday daily; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
+- **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. Has a `config.local.yaml` that sets `delivery.method: bear` explicitly (matching the committed default) and overrides `scoring.model` to **Haiku 4.5** (~3× cheaper than the committed Sonnet 4.6). Uses `com.cyberbriefing.{daily,weekly}.plist` — copied from the always-on-desktop `*.example` templates — (06:15 daily, **Monday–Friday** — no weekend daily; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
 - **Work laptop** (user `duncanhurwood`) — delivers to **Slack**. Has a `config.local.yaml` overriding `delivery.method` (Slack) and the scoring model. Uses `com.cyberbriefing.{daily,weekly}.laptop.plist` (08:40 **weekdays**; **Monday** weekly), and **no `pmset`**: a closed laptop can't be woken reliably, so it relies on launchd running a *missed* calendar job on the next wake ("08:40, or first wake after"). Slack delivery needs **1Password unlocked** at run time — the local-env FIFO streams no token while locked. A locked fire no longer hangs (it did until 2 Jul 2026): the `.env` load is now time-bounded, and a real run whose secrets never arrive fails fast with a `secrets_unavailable` marker so the next fire retries (see *1Password FIFO env-load hang* below).
 
 Before applying any scheduling/network reasoning, check which machine you mean: the Mac-mini sections below assume always-on; the laptop sleeps, roams, and closes its lid.
 
 ## Per-machine config (`config.local.yaml`)
 
-`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that key, leaving `delivery.slack.channel` intact). Both `briefing.py` and `weekly_run.py` load config through it. A machine with no local file would fall back to the committed defaults, but in practice **both** machines have one and drive their delivery target and scoring model from it rather than leaning on an implicit default: the mini's sets `delivery.method: bear` + `scoring.model` to Haiku 4.5; the laptop's sets `delivery.method: slack` + its own scoring model (Sonnet 4.6). This is how one repo drives Bear + Haiku on the mini and Slack + Sonnet on the laptop, without diverging committed files or branches.
+`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that key, leaving `delivery.slack.channel` intact). Both `briefing.py` and `weekly_run.py` load config through it. A machine with no local file would fall back to the committed defaults, but in practice **both** machines have one and drive their delivery target and scoring model from it rather than leaning on an implicit default: the mini's sets `delivery.method: bear` + `scoring.model` to Haiku 4.5; the laptop's sets `delivery.method: slack` + its own scoring model (Sonnet 4.6) + `delivery.slack.channel` (the real channel ID — `config.yaml` now ships only a placeholder `C0XXXXXXXXX`, so the laptop's local file must supply the real one or Slack delivery has nowhere to post). A committed `config.local.yaml.example` documents the shape. This is how one repo drives Bear + Haiku on the mini and Slack + Sonnet on the laptop, without diverging committed files or branches.
 
 ## Running it
 
@@ -112,7 +112,7 @@ Edit `config.yaml`:
 
 > This section describes the **home Mac mini** (`com.cyberbriefing.*.plist`). The **work laptop** uses `com.cyberbriefing.*.laptop.plist` — 08:40 on weekdays (`Weekday` 1–5), Monday 10:00 weekly, laptop paths, and **no `pmset`** (it relies on launchd firing the missed calendar job on the next wake, since a closed lid can't be woken). Install those the same way, substituting the `.laptop.plist` filenames. Everything else (Aqua/Interactive/`caffeinate`/idempotency) is identical.
 
-Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. The schedule runs **Monday–Saturday only** (`Weekday` 1–6 on every slot); Sunday is deliberately omitted so only the weekly summary runs that day. Two slots per day:
+Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. The schedule runs **Monday–Friday only** (`Weekday` 1–5 on every slot); Saturday and Sunday are deliberately omitted — the weekend has no daily briefing, and the weekly summary runs on Sunday. Two slots per day:
 
 - **06:15** — primary fire.
 - **07:30** — idempotent fallback. `briefing.py` checks `state.db` (`was_delivered_today()`) and exits cleanly if today's briefing has already been delivered, so this is a no-op on good days and the only thing that runs on bad days.
@@ -127,8 +127,16 @@ The plist is hardened for correct user GUI context — this is what the previous
 The plist also requires the system to be in a real wake state at the schedule time. Even on the always-on Mac mini, macOS keeps the user session in a degraded "dark wake" overnight that breaks `getaddrinfo` with EBADF (see the *Recurring 06:00 EBADF bug — actual fix (9 May 2026)* section). A `pmset repeat` schedules a real user-session wake at 06:10, five minutes before the primary fire.
 
 ```bash
-# One-time: schedule a real daily wake five minutes before the primary fire.
-sudo pmset repeat wakeorpoweron MTWRFSU 06:10:00
+# First time only: the real com.cyberbriefing.daily.plist is gitignored, so
+# create it from the committed template and fill in __PROJECT_DIR__ / __USER__.
+# (Skip if you already have the real plist on this machine.)
+cp com.cyberbriefing.daily.plist.example com.cyberbriefing.daily.plist
+# ...then edit the two placeholders in the copy.
+
+# One-time: schedule a real daily wake five minutes before the primary fire
+# (Mon–Fri, matching the daily schedule; the Sunday weekly runs at noon and
+# needs no early wake).
+sudo pmset repeat wakeorpoweron MTWRF 06:10:00
 # Verify
 pmset -g sched
 

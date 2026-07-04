@@ -43,28 +43,44 @@ uv run python weekly_run.py             # real run → Bear or Slack (per config
 
 ## Scheduling with launchd
 
-The briefing runs as a long-running daemon (`daemon.py`) that sleeps until 06:00, runs the pipeline, then sleeps until the next day. launchd keeps it alive with `RunAtLoad` + `KeepAlive` — it starts at login and restarts automatically if it crashes.
+The briefing runs **cron-style**: launchd spawns a fresh `briefing.py` process at each calendar slot (a primary fire plus a ~1h idempotent fallback that no-ops if the day was already delivered). There is no long-running daemon.
+
+The launchd plists carry per-machine values (absolute path, username, schedule), so the **real `*.plist` files are gitignored** — only generic `*.plist.example` templates are committed. Two archetypes are provided:
+
+| Template | For | Schedule | pmset wake |
+|----------|-----|----------|------------|
+| `com.cyberbriefing.daily.plist.example` + `com.cyberbriefing.weekly.plist.example` | An **always-on desktop** (e.g. Mac mini) | Daily 06:15 (Mon–Fri) + weekly Sun 12:00 | Yes — needed |
+| `com.cyberbriefing.daily.laptop.plist.example` + `com.cyberbriefing.weekly.laptop.plist.example` | A **laptop that sleeps** | Daily 08:40 (weekdays) + weekly Mon 10:00 | No — runs the missed job on next wake |
+
+Install (using the always-on desktop pair as the example):
 
 ```bash
-# Copy the plist to LaunchAgents and edit the project path
-cp com.cyberbriefing.daily.plist ~/Library/LaunchAgents/
-# Replace __PROJECT_DIR__ with the actual path to this project
+# 1. Copy the template to the real (gitignored) filename
+cp com.cyberbriefing.daily.plist.example com.cyberbriefing.daily.plist
 
-# Install the daemon
+# 2. Fill in the two placeholders in the copy:
+#    __PROJECT_DIR__  → absolute path to this repo (e.g. /Users/you/cyberbriefing)
+#    __USER__         → your macOS short username
+
+# 3. Copy into LaunchAgents and load it
+cp com.cyberbriefing.daily.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
 
-# Check it's running
+# Confirm it loaded in the Aqua GUI session (needed for DNS to work at run time)
 launchctl print gui/$(id -u)/com.cyberbriefing.daily
 
-# Restart after changes
+# Reload after edits
 launchctl bootout gui/$(id -u)/com.cyberbriefing.daily
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
-
-# To test the pipeline without the daemon
-uv run python briefing.py --dry-run
 ```
 
-Check logs at `/tmp/cyberbriefing.log` (daemon status) and `/tmp/cyberbriefing.err` (pipeline output).
+On an **always-on desktop**, also schedule a real user-session wake a few minutes before the primary fire (an idle Mac drops into a "dark wake" where DNS can fail):
+
+```bash
+sudo pmset repeat wakeorpoweron MTWRF 06:10:00   # verify with: pmset -g sched
+```
+
+Repeat steps 1–3 for the weekly template. Logs are at `/tmp/cyberbriefing.log` / `.err` (daily) and `/tmp/cyberbriefing-weekly.log` / `.err` (weekly). Test the pipeline any time without launchd via `uv run python briefing.py --dry-run`.
 
 ## Configuration
 
@@ -78,19 +94,34 @@ Edit `config.yaml` to:
 
 Edit `prioritiser/prompt.txt` to tune the AI scoring. This is where you adjust priorities without touching code.
 
+### Per-machine overrides (`config.local.yaml`)
+
+`config.yaml` holds the shared defaults. Anything specific to one machine —
+delivery method, scoring model, your real Slack channel — goes in a gitignored
+`config.local.yaml` that is deep-merged over `config.yaml`. Copy the template
+to get started:
+
+```bash
+cp config.local.yaml.example config.local.yaml
+```
+
+This is how one repo can drive, say, Bear on a home desktop and Slack on a work
+laptop without diverging the committed files.
+
 ## Slack delivery
 
-Set `delivery.method: slack` in `config.yaml` to post the briefing to a Slack
-channel instead of Bear. Both the daily briefing and the weekly summary honour
-this setting; a dated markdown backup is still written to
-`~/cyberbriefing-output/` regardless.
+Set `delivery.method: slack` (in `config.local.yaml`, or `config.yaml` if every
+machine uses Slack) to post the briefing to a Slack channel instead of Bear.
+Both the daily briefing and the weekly summary honour this setting; a dated
+markdown backup is still written to `~/cyberbriefing-output/` regardless.
 
 One-time setup:
 
 1. Create a Slack app, add the **`chat:write`** bot scope, and install it to
    your workspace.
 2. `/invite` the bot into the target channel.
-3. Put the channel ID in `config.yaml` under `delivery.slack.channel`.
+3. Put the channel ID under `delivery.slack.channel` in `config.local.yaml`
+   (`config.yaml` ships a placeholder channel ID, not a real one).
 4. Provide `SLACK_BOT_TOKEN` via your `.env` (see below).
 
 The briefing is rendered as a native Slack message; anything longer than

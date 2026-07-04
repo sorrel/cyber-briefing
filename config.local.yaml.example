@@ -1,0 +1,22 @@
+# Per-machine config overrides — deep-merged over config.yaml by config_loader.
+#
+# Copy this file to config.local.yaml (the real file is gitignored) and keep
+# only the keys you want to override on THIS machine. A nested key replaces
+# just that leaf: setting delivery.method here leaves delivery.slack.channel
+# (from config.yaml) intact. A machine with no config.local.yaml simply uses
+# the committed config.yaml defaults.
+
+delivery:
+  # bear | slack | stdout | markdown_file
+  method: "bear"
+
+  # Only needed if method is "slack". config.yaml ships a placeholder channel,
+  # so set your real channel ID here (the bot must be invited to it):
+  # slack:
+  #   channel: "C0XXXXXXXXX"
+
+scoring:
+  # Override the scoring model per machine, e.g. a cheaper model on an
+  # always-on box. Omit to use the config.yaml default.
+  # model: "claude-haiku-4-5-20251001"
+  model: "claude-sonnet-5"
