@@ -27,6 +27,12 @@ uv run python briefing.py --stats       # Show DB stats by source
 uv run python briefing.py               # Real run → Bear or Slack (per delivery.method)
 ```
 
+**Dependency management is uv-only.** The manifest is `pyproject.toml` + `uv.lock`;
+upgrade with `uv lock --upgrade` and `uv sync`. There is deliberately **no
+`requirements.txt`** — do not add one, and don't reintroduce a pip fallback.
+It's listed in `.gitignore` to keep it from creeping back. The Python version is
+pinned in `.python-version`. Dependabot tracks the `uv` ecosystem, not pip.
+
 ## Architecture
 
 ```
