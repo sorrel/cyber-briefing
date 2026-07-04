@@ -8,14 +8,14 @@ A Python pipeline that runs daily to produce a prioritised cybersecurity briefin
 
 This tool runs on **two machines from the same git repo**. Per-machine differences are isolated to a gitignored `config.local.yaml` (delivery method) and separate launchd plists (schedule + paths); the shared code and `config.yaml` are identical on both.
 
-- **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. No `config.local.yaml`, so it keeps the committed default `delivery.method: bear`. Uses `com.cyberbriefing.{daily,weekly}.plist` (06:15 daily, all week; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
+- **Home Mac mini** (user `duncan`, on 24/7) — delivers to **Bear**. Has a `config.local.yaml` that sets `delivery.method: bear` explicitly (matching the committed default) and overrides `scoring.model` to **Haiku 4.5** (~3× cheaper than the committed Sonnet 4.6). Uses `com.cyberbriefing.{daily,weekly}.plist` (06:15 daily, **Monday–Saturday** — no Sunday daily; Sunday weekly) plus the `pmset` wake. **All the always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to THIS machine** — no sleep/wake, no Wi-Fi roaming, no lid-close.
 - **Work laptop** (user `duncanhurwood`) — delivers to **Slack**. Has a `config.local.yaml` overriding `delivery.method` (Slack) and the scoring model. Uses `com.cyberbriefing.{daily,weekly}.laptop.plist` (08:40 **weekdays**; **Monday** weekly), and **no `pmset`**: a closed laptop can't be woken reliably, so it relies on launchd running a *missed* calendar job on the next wake ("08:40, or first wake after"). Slack delivery needs **1Password unlocked** at run time — the local-env FIFO streams no token while locked. A locked fire no longer hangs (it did until 2 Jul 2026): the `.env` load is now time-bounded, and a real run whose secrets never arrive fails fast with a `secrets_unavailable` marker so the next fire retries (see *1Password FIFO env-load hang* below).
 
 Before applying any scheduling/network reasoning, check which machine you mean: the Mac-mini sections below assume always-on; the laptop sleeps, roams, and closes its lid.
 
 ## Per-machine config (`config.local.yaml`)
 
-`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that key, leaving `delivery.slack.channel` intact). Both `briefing.py` and `weekly_run.py` load config through it. A machine with no local file gets the committed defaults (the mini). The laptop's `config.local.yaml` overrides `delivery.method` (to `slack`) and `scoring.model`. This is how one repo drives Bear + the committed default model on the mini and Slack + a machine-specific model on the laptop, without diverging committed files or branches.
+`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that key, leaving `delivery.slack.channel` intact). Both `briefing.py` and `weekly_run.py` load config through it. A machine with no local file would fall back to the committed defaults, but in practice **both** machines have one and drive their delivery target and scoring model from it rather than leaning on an implicit default: the mini's sets `delivery.method: bear` + `scoring.model` to Haiku 4.5; the laptop's sets `delivery.method: slack` + its own scoring model (Sonnet 4.6). This is how one repo drives Bear + Haiku on the mini and Slack + Sonnet on the laptop, without diverging committed files or branches.
 
 ## Running it
 
@@ -26,6 +26,12 @@ uv run python briefing.py --gather-only # Collect only, mark seen, no scoring
 uv run python briefing.py --stats       # Show DB stats by source
 uv run python briefing.py               # Real run → Bear or Slack (per delivery.method)
 ```
+
+**Dependency management is uv-only.** The manifest is `pyproject.toml` + `uv.lock`;
+upgrade with `uv lock --upgrade` and `uv sync`. There is deliberately **no
+`requirements.txt`** — do not add one, and don't reintroduce a pip fallback.
+It's listed in `.gitignore` to keep it from creeping back. The Python version is
+pinned in `.python-version`. Dependabot tracks the `uv` ecosystem, not pip.
 
 ## Architecture
 
@@ -106,7 +112,7 @@ Edit `config.yaml`:
 
 > This section describes the **home Mac mini** (`com.cyberbriefing.*.plist`). The **work laptop** uses `com.cyberbriefing.*.laptop.plist` — 08:40 on weekdays (`Weekday` 1–5), Monday 10:00 weekly, laptop paths, and **no `pmset`** (it relies on launchd firing the missed calendar job on the next wake, since a closed lid can't be woken). Install those the same way, substituting the `.laptop.plist` filenames. Everything else (Aqua/Interactive/`caffeinate`/idempotency) is identical.
 
-Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. Two slots:
+Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. The schedule runs **Monday–Saturday only** (`Weekday` 1–6 on every slot); Sunday is deliberately omitted so only the weekly summary runs that day. Two slots per day:
 
 - **06:15** — primary fire.
 - **07:30** — idempotent fallback. `briefing.py` checks `state.db` (`was_delivered_today()`) and exits cleanly if today's briefing has already been delivered, so this is a no-op on good days and the only thing that runs on bad days.

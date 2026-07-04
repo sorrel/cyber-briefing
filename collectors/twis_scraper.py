@@ -13,7 +13,7 @@ import re
 import feedparser
 from bs4 import BeautifulSoup
 
-from .base import make_item, parse_feedparser_date, truncate
+from .base import host_matches, make_item, parse_feedparser_date, truncate
 
 logger = logging.getLogger("cyberbriefing.collectors.twis_scraper")
 
@@ -162,7 +162,7 @@ _SOCIAL_DOMAINS = re.compile(
 
 def _is_non_story_url(url: str) -> bool:
     """Return True for URLs that are social posts or newsletter self-links."""
-    if "this.weekinsecurity.com" in url:
+    if host_matches(url, "this.weekinsecurity.com"):
         return True
     # Generic Mastodon/ActivityPub instances: /@user/ path pattern
     if re.search(r"/(@[\w.]+|users/\w+)/\d+", url):

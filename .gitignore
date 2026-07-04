@@ -7,3 +7,6 @@ __pycache__/
 *.log
 .DS_Store
 .claude
+
+# uv-only project — never a pip requirements file (see CLAUDE.md)
+requirements.txt

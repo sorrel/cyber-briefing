@@ -10,13 +10,9 @@
 # Move the project into place
 mv cyberbriefing /path/to/your/scripts/
 
-# Set up with uv
+# Set up with uv (creates the venv and installs from uv.lock)
 cd /path/to/your/scripts/cyberbriefing
-uv venv
-source .venv/bin/activate
-uv pip install -r requirements.txt
-# Or alternatively:
-uv pip install -e .
+uv sync
 
 # Set up secrets
 cp .env.example .env
@@ -49,8 +45,7 @@ python briefing.py --dry-run
 
 ### Config
 - `config.yaml` — All sources, scoring weights, thresholds
-- `pyproject.toml` — For uv/pip
-- `requirements.txt` — Fallback for pip
+- `pyproject.toml` + `uv.lock` — dependency manifest (uv only; no `requirements.txt`)
 - `.env.example` — Template for secrets
 - `com.cyberbriefing.daily.plist` — launchd scheduler template (run `install_launchd.sh` to install with correct paths)
 
@@ -95,8 +90,8 @@ python briefing.py --dry-run
 cyberbriefing/
 ├── briefing.py               # Entry point
 ├── config.yaml               # Source registry + scoring config
-├── pyproject.toml             # uv/pip
-├── requirements.txt           # Fallback deps
+├── pyproject.toml             # uv dependency manifest
+├── uv.lock                    # Pinned dependency lock (uv)
 ├── .env.example               # Secrets template
 ├── .gitignore
 ├── README.md
