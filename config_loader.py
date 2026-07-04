@@ -1,16 +1,14 @@
 """Load config.yaml (overlaid with config.local.yaml) plus startup guards.
 
-Both machines share config.yaml via git. Per-machine differences — e.g. the
-work laptop delivering to Slack while the always-on home Mac mini uses Bear —
-live in a gitignored ``config.local.yaml`` that is deep-merged over the
-committed defaults. A machine with no local file gets the committed config
-unchanged (the mini keeps ``delivery.method: bear``).
+config.yaml holds the shared defaults committed to git. Per-machine differences
+— delivery method, scoring model, the Slack channel — live in a gitignored
+``config.local.yaml`` that is deep-merged over the committed defaults. A machine
+with no local file simply gets the committed config unchanged.
 
 This module also hosts the two startup-resilience helpers both entry points
 (briefing.py, weekly_run.py) call before doing any work: ``load_env_with_timeout``
 (bounds the 1Password-FIFO .env load so it can't hang forever) and
-``arm_runtime_watchdog`` (a whole-process timeout backstop). See the
-2 Jul 2026 hang postmortem in CLAUDE.md.
+``arm_runtime_watchdog`` (a whole-process timeout backstop).
 """
 
 import logging

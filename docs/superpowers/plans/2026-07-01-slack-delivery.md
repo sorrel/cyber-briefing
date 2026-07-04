@@ -14,7 +14,7 @@
 - **No new dependencies.** Use `requests` for Slack HTTP (do not add `slack_sdk`).
 - Delivery interface everywhere is `(title: str, body: str, tags: list[str]) -> bool`.
 - The markdown backup MUST be written for every real delivery except `stdout` — `weekly/reader.py` depends on `~/cyberbriefing-output/`.
-- Slack channel ID is `C0BE6PB6S75`, stored in `config.yaml` (`delivery.slack.channel`) — never hardcoded in Python.
+- Slack channel ID is `C0EXAMPLE01`, stored in `config.yaml` (`delivery.slack.channel`) — never hardcoded in Python.
 - Slack token is `SLACK_BOT_TOKEN` from the environment (`os.environ`); the only bot scope required is `chat:write`.
 - Slack `mrkdwn` italic is `_..._` and bold is `*...*` — the inverse of our markdown, which uses `*...*` for italic. The converter must remap this.
 - **Commit style (repo house rule):** lowercase Conventional Commits; append a second `-m "claude did his thing on this"`; NEVER add a `Co-Authored-By` trailer.
@@ -494,7 +494,7 @@ class FakeResp:
         return self._payload
 
 
-CFG = {"channel": "C0BE6PB6S75"}
+CFG = {"channel": "C0EXAMPLE01"}
 
 
 def test_missing_token_returns_false(monkeypatch):
@@ -523,7 +523,7 @@ def test_single_message_posts_parent(monkeypatch):
 
     assert deliver_to_slack("Cyber Briefing", "body", [], CFG) is True
     assert len(calls) == 1
-    assert calls[0]["channel"] == "C0BE6PB6S75"
+    assert calls[0]["channel"] == "C0EXAMPLE01"
     assert calls[0]["text"] == "Cyber Briefing"
     assert "blocks" in calls[0]
     assert "thread_ts" not in calls[0]
@@ -727,9 +727,9 @@ def test_bear_method_delivers_and_backs_up(monkeypatch):
 
 def test_slack_method_passes_channel_and_backs_up(monkeypatch):
     calls = _spy(monkeypatch)
-    cfg = {"method": "slack", "slack": {"channel": "C0BE6PB6S75"}}
+    cfg = {"method": "slack", "slack": {"channel": "C0EXAMPLE01"}}
     assert deliver(cfg, "T", "b", ["x"]) is True
-    assert calls["slack"] == {"channel": "C0BE6PB6S75"}
+    assert calls["slack"] == {"channel": "C0EXAMPLE01"}
     assert calls["backup"] == 1
 
 
@@ -861,7 +861,7 @@ delivery:
   bear_tag: "security/briefing/daily"
   markdown_output_dir: "~/cyberbriefing-output"
   slack:
-    channel: "C0BE6PB6S75"   # channel ID; the bot must be invited to this channel
+    channel: "C0EXAMPLE01"   # channel ID; the bot must be invited to this channel
 ```
 
 - [x] **Step 2: Edit `.env.example`**
@@ -892,7 +892,7 @@ SLACK_BOT_TOKEN=xoxb-your-slack-bot-token
 - [x] **Step 3: Sanity-check config parses**
 
 Run: `uv run python -c "import yaml; print(yaml.safe_load(open('config.yaml'))['delivery']['slack']['channel'])"`
-Expected: prints `C0BE6PB6S75`.
+Expected: prints `C0EXAMPLE01`.
 
 - [x] **Step 4: Commit**
 
@@ -1229,4 +1229,4 @@ git commit -m "docs: document slack delivery option and delivery dispatcher" -m 
 - [x] Run the whole suite: `uv run pytest -q` — 106 passed (1 Jul 2026).
 - [x] Daily dry-run: `uv run python briefing.py --dry-run` — green; full tiered briefing to stdout, only the expected optional-token (HackerOne/GitHub) skips, no state changes.
 - [x] Weekly dry-run: `uv run python weekly_run.py --dry-run` — empty-week path confirmed: `~/cyberbriefing-output/` had 0 daily backups, so it read 0 stories, wrote `FAILURE-weekly-<date>.md`, exited non-zero, no exception. Happy path (summarise → format → dispatch) therefore covered only by unit tests, not this run.
-- [ ] (Optional, needs a real token + invited bot) Temporarily set `delivery.method: slack`, export `SLACK_BOT_TOKEN`, run `uv run python briefing.py` and confirm the message lands in `C0BE6PB6S75` and a backup appears in `~/cyberbriefing-output/`.
+- [ ] (Optional, needs a real token + invited bot) Temporarily set `delivery.method: slack`, export `SLACK_BOT_TOKEN`, run `uv run python briefing.py` and confirm the message lands in `C0EXAMPLE01` and a backup appears in `~/cyberbriefing-output/`.

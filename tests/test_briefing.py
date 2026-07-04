@@ -139,5 +139,5 @@ class TestSecretsBlocked:
         assert _secrets_blocked(env_ready=False, dry_run=True, gather_only=False) is False
 
     def test_allows_gather_only_even_when_env_not_ready(self):
-        # Gathering needs no secrets, so a locked laptop stays inspectable.
+        # Gathering needs no secrets, so a locked machine stays inspectable.
         assert _secrets_blocked(env_ready=False, dry_run=False, gather_only=True) is False

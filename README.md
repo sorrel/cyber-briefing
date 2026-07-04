@@ -49,7 +49,7 @@ The launchd plists carry per-machine values (absolute path, username, schedule),
 
 | Template | For | Schedule | pmset wake |
 |----------|-----|----------|------------|
-| `com.cyberbriefing.daily.plist.example` + `com.cyberbriefing.weekly.plist.example` | An **always-on desktop** (e.g. Mac mini) | Daily 06:15 (Mon–Fri) + weekly Sun 12:00 | Yes — needed |
+| `com.cyberbriefing.daily.plist.example` + `com.cyberbriefing.weekly.plist.example` | An **always-on desktop** (a Mac left powered on) | Daily 06:15 (Mon–Fri) + weekly Sun 12:00 | Yes — needed |
 | `com.cyberbriefing.daily.laptop.plist.example` + `com.cyberbriefing.weekly.laptop.plist.example` | A **laptop that sleeps** | Daily 08:40 (weekdays) + weekly Mon 10:00 | No — runs the missed job on next wake |
 
 Install (using the always-on desktop pair as the example):
@@ -105,8 +105,8 @@ to get started:
 cp config.local.yaml.example config.local.yaml
 ```
 
-This is how one repo can drive, say, Bear on a home desktop and Slack on a work
-laptop without diverging the committed files.
+This lets one repo drive different delivery targets or schedules on different
+machines without diverging the committed files.
 
 ## Slack delivery
 

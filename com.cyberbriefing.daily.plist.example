@@ -5,7 +5,7 @@
     <key>Label</key>
     <string>com.cyberbriefing.daily</string>
 
-    <!-- ALWAYS-ON DESKTOP archetype (e.g. a Mac mini on 24/7).
+    <!-- ALWAYS-ON DESKTOP archetype (a Mac that stays powered on 24/7).
 
          Copy this file to com.cyberbriefing.daily.plist (the real file is
          gitignored) and replace the two placeholders:

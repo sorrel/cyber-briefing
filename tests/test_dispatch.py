@@ -27,9 +27,9 @@ def test_bear_method_delivers_and_backs_up(monkeypatch):
 
 def test_slack_method_passes_channel_and_backs_up(monkeypatch):
     calls = _spy(monkeypatch)
-    cfg = {"method": "slack", "slack": {"channel": "C0BE6PB6S75"}}
+    cfg = {"method": "slack", "slack": {"channel": "C0EXAMPLE01"}}
     assert deliver(cfg, "T", "b", ["x"]) is True
-    assert calls["slack"] == {"channel": "C0BE6PB6S75"}
+    assert calls["slack"] == {"channel": "C0EXAMPLE01"}
     assert calls["backup"] == 1
 
 

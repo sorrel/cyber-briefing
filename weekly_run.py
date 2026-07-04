@@ -38,8 +38,8 @@ def _load_scoring_config() -> dict:
 def _load_delivery_config() -> dict:
     """Load the delivery config block (method + slack channel).
 
-    Routed through config_loader so a per-machine config.local.yaml (e.g. the
-    laptop's delivery.method: slack) overrides the committed default.
+    Routed through config_loader so a per-machine config.local.yaml
+    (e.g. delivery.method: slack) overrides the committed default.
     """
     try:
         return config_loader.load_config().get("delivery", {})

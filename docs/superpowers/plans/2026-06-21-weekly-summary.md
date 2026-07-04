@@ -1112,7 +1112,7 @@ In `CLAUDE.md`, after the `## Scheduling` section, add a `## Weekly summary` sec
 - Failure mode: `FAILURE-weekly-<date>.md` written if the week's backups are empty or Claude fails.
 - Note: markdown backup retention was raised 7 → 10 days so Sunday always sees the full week.
 
-- [ ] **Step 2: Install and smoke-test the schedule (manual, on the Mac mini)**
+- [ ] **Step 2: Install and smoke-test the schedule (manual, on the target machine)**
 
 Run:
 ```bash
