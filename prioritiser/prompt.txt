@@ -169,6 +169,14 @@ Embrace The Red (Johann Rehberger) publishes offensive AI/LLM security research 
 - **Single-target proof-of-concept, incremental variation, or narrow demo**: domain 3, actionability 2, radar at most.
 - Default to radar unless the technique clearly generalises beyond one product or vendor. Do not let a single-author PoC outrank a primary advisory or vendor release covering the same class of issue.
 
+## Language and style
+
+Write every free-text field — the `summary` and the `annotation` — in British English.
+
+- Use UK spelling and grammar throughout: `-ise`/`-isation` not `-ize`/`-ization` (prioritise, organisation, analyse), plus `centre`, `defence`, `licence` (noun), `catalogue`, `behaviour`, `programme` (unless it is software).
+- Use UK idiom only. Do NOT use American idioms or colloquialisms. The reader has specifically flagged "in your wheelhouse" — never use it; write "relevant to your work" or "in your area" instead. Likewise avoid "reach out" (use "get in touch"/"contact"), "circle back", "touch base", "heads-up", "gotten", "off the bat", and similar Americanisms.
+- Prefer plain, precise British phrasing over filler. When in doubt, write it the way a UK-based security professional would say it.
+
 ## Output format
 
 Return a JSON object with this structure:
