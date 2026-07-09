@@ -12,6 +12,8 @@ from pathlib import Path
 
 import anthropic
 
+from prioritiser.deduplicator import reconcile_cluster_ids
+
 logger = logging.getLogger("cyberbriefing.prioritiser.scorer")
 
 PROMPT_PATH = Path(__file__).parent / "prompt.txt"
@@ -164,6 +166,13 @@ def score_items(items: list[dict], config: dict | None = None) -> dict:
         all_scored.extend(scored)
         if not ok:
             chunks_failed += 1
+
+    # Chunks are scored in independent Claude calls, so the same story split
+    # across two chunks gets two mismatched cluster_id slugs that clusterer.py
+    # cannot merge. Reconcile them in one extra pass over the scored items.
+    # A single chunk already has globally-consistent slugs, so skip the call.
+    if n_chunks > 1:
+        all_scored = reconcile_cluster_ids(client, model, all_scored)
 
     all_scored.sort(key=lambda x: x.get("composite", 0), reverse=True)
     high_floor = config.get("high_score_floor", 18)
