@@ -18,7 +18,22 @@ from pathlib import Path
 logger = logging.getLogger("cyberbriefing.prioritiser.deduplicator")
 
 PROMPT_PATH = Path(__file__).parent / "dedup_prompt.txt"
-MAX_TOKENS = 2000
+
+# Output is one {"id", "cluster_id"} entry per item, and this call echoes EVERY
+# scored item at once (unlike the chunked scorer). 16-hex ids and hyphenated
+# slugs are token-dense (~2 chars/token, ~40 tokens/entry), so a fixed 2000-token
+# cap truncated the JSON mid-string at ~48 items on busy days — json.loads then
+# rejected it as an "unterminated string" and the whole pass silently fell back
+# to per-chunk cluster_ids. Size the budget to the item count with headroom,
+# capped at a safe non-streaming ceiling.
+_OUTPUT_TOKENS_BASE = 512
+_OUTPUT_TOKENS_PER_ITEM = 80
+_OUTPUT_TOKENS_CAP = 16000
+
+
+def _output_budget(n_items: int) -> int:
+    """max_tokens for the reconcile call, scaled to how many items we echo back."""
+    return min(_OUTPUT_TOKENS_CAP, _OUTPUT_TOKENS_BASE + n_items * _OUTPUT_TOKENS_PER_ITEM)
 
 
 def _load_prompt() -> str:
@@ -75,10 +90,11 @@ def reconcile_cluster_ids(client, model: str, scored_items: list[dict]) -> list[
         f"cluster_ids as instructed.\n\n" + json.dumps(compact, indent=None)
     )
 
+    max_tokens = _output_budget(len(compact))
     try:
         response = client.messages.create(
             model=model,
-            max_tokens=MAX_TOKENS,
+            max_tokens=max_tokens,
             thinking={"type": "disabled"},
             system=[
                 {
@@ -89,6 +105,16 @@ def reconcile_cluster_ids(client, model: str, scored_items: list[dict]) -> list[
             ],
             messages=[{"role": "user", "content": user_message}],
         )
+        # Truncation → half-written JSON; catch it here so the log names the real
+        # cause instead of a cryptic "unterminated string" from json.loads.
+        if response.stop_reason == "max_tokens":
+            logger.warning(
+                "Cluster reconciliation output truncated at max_tokens=%d for %d "
+                "items — keeping per-chunk cluster_ids (raise _OUTPUT_TOKENS_* if "
+                "this recurs)",
+                max_tokens, len(compact),
+            )
+            return scored_items
         response_text = "".join(
             block.text for block in response.content if block.type == "text"
         )
