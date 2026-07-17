@@ -16,8 +16,9 @@ class FakeBlock:
 
 
 class FakeResponse:
-    def __init__(self, text):
+    def __init__(self, text, stop_reason="end_turn"):
         self.content = [FakeBlock(text)]
+        self.stop_reason = stop_reason
 
 
 class FakeMessages:

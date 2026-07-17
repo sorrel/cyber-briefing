@@ -15,6 +15,8 @@ import json
 import logging
 from pathlib import Path
 
+from prioritiser.claude_response import TruncatedResponse, extract_json_text
+
 logger = logging.getLogger("cyberbriefing.prioritiser.deduplicator")
 
 PROMPT_PATH = Path(__file__).parent / "dedup_prompt.txt"
@@ -53,15 +55,8 @@ def _apply_cluster_map(scored_items: list[dict], cluster_map: dict[str, str]) ->
 
 
 def _parse_cluster_map(response_text: str) -> dict[str, str]:
-    """Parse Claude's response into an {item_id: cluster_id} mapping."""
-    cleaned = response_text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[1]
-    if cleaned.endswith("```"):
-        cleaned = cleaned.rsplit("```", 1)[0]
-    cleaned = cleaned.strip()
-
-    data = json.loads(cleaned)
+    """Parse Claude's extracted JSON into an {item_id: cluster_id} mapping."""
+    data = json.loads(response_text)
     mapping = {}
     for entry in data.get("items", []):
         item_id = entry.get("id")
@@ -105,20 +100,17 @@ def reconcile_cluster_ids(client, model: str, scored_items: list[dict]) -> list[
             ],
             messages=[{"role": "user", "content": user_message}],
         )
-        # Truncation → half-written JSON; catch it here so the log names the real
-        # cause instead of a cryptic "unterminated string" from json.loads.
-        if response.stop_reason == "max_tokens":
-            logger.warning(
-                "Cluster reconciliation output truncated at max_tokens=%d for %d "
-                "items — keeping per-chunk cluster_ids (raise _OUTPUT_TOKENS_* if "
-                "this recurs)",
-                max_tokens, len(compact),
-            )
-            return scored_items
-        response_text = "".join(
-            block.text for block in response.content if block.type == "text"
+        cluster_map = _parse_cluster_map(extract_json_text(response))
+    except TruncatedResponse:
+        # The one failure we can name precisely and act on: the output cap was
+        # too small for this many items.
+        logger.warning(
+            "Cluster reconciliation output truncated at max_tokens=%d for %d "
+            "items — keeping per-chunk cluster_ids (raise _OUTPUT_TOKENS_* if "
+            "this recurs)",
+            max_tokens, len(compact),
         )
-        cluster_map = _parse_cluster_map(response_text)
+        return scored_items
     except Exception as e:
         # Best-effort by design: this is a quality enhancement, never a
         # dependency of a briefing. Any failure (API error, bad JSON, malformed
