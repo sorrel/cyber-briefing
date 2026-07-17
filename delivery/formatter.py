@@ -21,6 +21,11 @@ TIER_ORDER = ["critical", "notable", "radar", "britain"]
 
 VULN_SOURCES = {"nvd", "cisa_kev", "github_advisories", "hackerone"}
 
+# The Vulnerabilities section leads the briefing, so it is capped rather than
+# printing every CVE the structured sources returned. Items are ordered by
+# composite score, so the cap keeps the highest-scoring ones.
+DEFAULT_MAX_VULN_ITEMS = 3
+
 TIER_LABELS = {
     "critical": "Critical",
     "notable": "Notable",
@@ -32,6 +37,7 @@ def format_briefing(
     scored_items: list[dict],
     all_items: list[dict],
     briefing_date: str | None = None,
+    max_vuln_items: int = DEFAULT_MAX_VULN_ITEMS,
 ) -> tuple[str, str, list[str]]:
     """Format scored items into a markdown briefing.
 
@@ -39,6 +45,8 @@ def format_briefing(
         scored_items: Clustered/scored items from the prioritiser.
         all_items: Original items list (for URL lookups).
         briefing_date: Optional date string; defaults to today.
+        max_vuln_items: Cap on the Vulnerabilities section; lower-scoring
+            vulnerabilities beyond the cap are dropped from the briefing.
 
     Returns:
         Tuple of (title, body_markdown, tags).
@@ -50,18 +58,6 @@ def format_briefing(
 
     # Build a lookup for original items
     item_lookup = {item["id"]: item for item in all_items}
-
-    # Count items and unique sources
-    sources = set()
-    for item in scored_items:
-        original = item_lookup.get(item.get("id", ""), {})
-        sources.add(original.get("source", item.get("source", "unknown")))
-    source_list = ", ".join(sorted(_pretty_source(s) for s in sources))
-
-    lines = [
-        f"*{len(scored_items)} items · Sources: {source_list}*",
-        "",
-    ]
 
     # Separate vulnerability items (structured data sources) from general items.
     # Britain items stay in the britain section regardless of source.
@@ -78,6 +74,29 @@ def format_briefing(
             vuln_items.append(item)
         else:
             tiers[tier].append(item)
+
+    # scored_items arrives sorted by composite descending, so truncating keeps
+    # the highest-scoring vulnerabilities.
+    if len(vuln_items) > max_vuln_items:
+        logger.info(
+            "Capping Vulnerabilities section: %d items → %d",
+            len(vuln_items), max_vuln_items,
+        )
+        vuln_items = vuln_items[:max_vuln_items]
+
+    rendered = vuln_items + [i for t in TIER_ORDER for i in tiers[t]]
+
+    # Count items and unique sources from what actually made the briefing
+    sources = set()
+    for item in rendered:
+        original = item_lookup.get(item.get("id", ""), {})
+        sources.add(original.get("source", item.get("source", "unknown")))
+    source_list = ", ".join(sorted(_pretty_source(s) for s in sources))
+
+    lines = [
+        f"*{len(rendered)} items · Sources: {source_list}*",
+        "",
+    ]
 
     # Collect all tags
     all_tags = set()

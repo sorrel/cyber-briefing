@@ -40,7 +40,7 @@ from db.state import (
 )
 from prioritiser.scorer import score_items
 from prioritiser.clusterer import cluster_items
-from delivery.formatter import format_briefing
+from delivery.formatter import DEFAULT_MAX_VULN_ITEMS, format_briefing
 from delivery.bear import deliver_to_stdout
 from delivery.dispatch import deliver
 
@@ -294,7 +294,14 @@ def run_pipeline(
     logger.info("=" * 50)
 
     briefing_date = datetime.now().strftime("%Y-%m-%d")
-    title, body, tags = format_briefing(clustered, new_items, briefing_date)
+    title, body, tags = format_briefing(
+        clustered,
+        new_items,
+        briefing_date,
+        max_vuln_items=scoring_config.get(
+            "max_vuln_items", DEFAULT_MAX_VULN_ITEMS
+        ),
+    )
 
     if dry_run:
         success = deliver_to_stdout(title, body, tags)
