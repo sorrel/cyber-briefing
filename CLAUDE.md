@@ -110,6 +110,7 @@ Edit `config.yaml`:
 | Scoring weights | `config.yaml` → `scoring.weights` |
 | Score thresholds (tiers) | `config.yaml` → `scoring.threshold` + `prompt.txt` tier definitions |
 | Max items in briefing | `config.yaml` → `scoring.max_items` |
+| Max items in the Vulnerabilities section | `config.yaml` → `scoring.max_vuln_items` (default 3; highest-scoring kept, the rest dropped) |
 | Max items sent to Claude | `config.yaml` → `scoring.max_score_input` |
 | Scoring rubric / source guidance | `prioritiser/prompt.txt` |
 | Section headers / render style | `delivery/formatter.py` |
