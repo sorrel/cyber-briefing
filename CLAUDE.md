@@ -48,9 +48,12 @@ config.yaml          ← All source URLs, scoring weights, thresholds (edit me)
 config.local.yaml    ← Per-machine overrides, gitignored (copied from config.local.yaml.example)
 config_loader.py     ← Loads config.yaml, deep-merges config.local.yaml over it
 prioritiser/
-  prompt.txt         ← Claude scoring rubric (edit me to tune output)
-  scorer.py          ← Claude API call; returns scored JSON
-  clusterer.py       ← Merges items with same cluster_id
+  prompt.txt          ← Claude scoring rubric (edit me to tune output)
+  scorer.py           ← Claude API call; scores items in 50-item chunks, returns scored JSON
+  claude_response.py  ← Shared: extract JSON from a Claude response; raises TruncatedResponse at max_tokens
+  deduplicator.py     ← Cross-chunk cluster-id reconciliation (one extra Claude call over all scored items)
+  dedup_prompt.txt    ← Prompt for the reconciliation pass
+  clusterer.py        ← Merges items sharing a cluster_id (highest score wins)
 collectors/
   rss.py             ← Generic RSS/Atom for all feed sources
   cisa_kev.py        ← CISA Known Exploited Vulnerabilities catalogue
@@ -73,11 +76,12 @@ db/
 ## Pipeline flow
 
 1. **Gather**: All enabled collectors run; items filtered against state.db (dedup)
-2. **Score**: Up to 150 most-recent unseen items sent to Claude with prompt.txt
-3. **Cluster**: Items sharing a cluster_id are collapsed (highest score wins)
-4. **Format**: Tiered markdown — Critical / Notable / Radar / Britain
-5. **Deliver**: via `delivery.method` — Bear Notes or Slack (real run) or stdout (--dry-run); a markdown backup is always written
-6. **Mark seen**: All gathered items written to state.db
+2. **Score**: Up to `max_score_input` (150) most-recent unseen items go to Claude in **50-item chunks** — independent calls, with the system prompt cached across them. Each chunk returns scored items, each tagged with a `cluster_id`.
+3. **Reconcile clusters** (only when >1 chunk): because chunks are scored independently, the same story appearing in two chunks gets two different `cluster_id` slugs that `clusterer.py` can't merge. `deduplicator.reconcile_cluster_ids` makes one extra Claude call over *all* scored items to assign canonical `cluster_id`s across the whole set. It's strictly best-effort — any failure (API error, bad JSON, or a `max_tokens` truncation, now detected explicitly and logged) leaves the per-chunk ids untouched and never breaks or empties the briefing. Its output-token budget scales with the item count (see `deduplicator._output_budget`).
+4. **Cluster**: Items sharing a `cluster_id` are collapsed (highest score wins)
+5. **Format**: Tiered markdown — Critical / Notable / Radar / Britain
+6. **Deliver**: via `delivery.method` — Bear Notes or Slack (real run) or stdout (--dry-run); a markdown backup is always written
+7. **Mark seen**: All gathered items written to state.db
 
 ## Tiers
 
