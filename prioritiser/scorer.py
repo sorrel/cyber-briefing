@@ -12,6 +12,7 @@ from pathlib import Path
 
 import anthropic
 
+from prioritiser.claude_response import extract_json_text
 from prioritiser.deduplicator import reconcile_cluster_ids
 
 logger = logging.getLogger("cyberbriefing.prioritiser.scorer")
@@ -29,7 +30,8 @@ def _call_claude(client: anthropic.Anthropic, model: str, system_prompt: str,
                  items: list[dict], max_items: int) -> list[dict]:
     """Send one chunk of items to Claude. Returns a list of scored item dicts.
 
-    Raises ValueError on JSON parse failure so the caller can retry.
+    Raises ValueError on JSON parse failure — including TruncatedResponse when
+    Claude hits max_tokens — so the caller can retry (see _score_chunk).
     """
     user_message = (
         f"Here are {len(items)} cybersecurity items to score "
@@ -54,21 +56,14 @@ def _call_claude(client: anthropic.Anthropic, model: str, system_prompt: str,
         messages=[{"role": "user", "content": user_message}],
     )
 
-    response_text = "".join(
-        block.text for block in response.content if block.type == "text"
-    )
-
-    cleaned = response_text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[1]
-    if cleaned.endswith("```"):
-        cleaned = cleaned.rsplit("```", 1)[0]
-    cleaned = cleaned.strip()
-
+    # Shared extraction also raises TruncatedResponse (a ValueError) if the model
+    # hit max_tokens, so _score_chunk's retry-in-halves catches it and a smaller
+    # chunk fits — with a truncation reason in the log, not a bare parse error.
+    cleaned = extract_json_text(response)
     try:
         result = json.loads(cleaned)
     except json.JSONDecodeError as e:
-        logger.debug("Raw response snippet: %s", response_text[:500])
+        logger.debug("Raw response snippet: %s", cleaned[:500])
         raise ValueError(f"JSON parse failed: {e}") from e
 
     return result.get("items", [])
