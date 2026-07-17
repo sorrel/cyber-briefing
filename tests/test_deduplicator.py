@@ -7,8 +7,10 @@ assign canonical cluster_ids across the whole set. It is best-effort: any
 failure must return the items unchanged rather than break the briefing.
 """
 
+import logging
+
 from prioritiser.clusterer import cluster_items
-from prioritiser.deduplicator import reconcile_cluster_ids
+from prioritiser.deduplicator import _output_budget, reconcile_cluster_ids
 
 
 class FakeBlock:
@@ -18,8 +20,9 @@ class FakeBlock:
 
 
 class FakeResponse:
-    def __init__(self, text):
+    def __init__(self, text, stop_reason="end_turn"):
         self.content = [FakeBlock(text)]
+        self.stop_reason = stop_reason
 
 
 class FakeMessages:
@@ -54,8 +57,8 @@ def _items():
     ]
 
 
-def _responder(text):
-    return lambda kwargs: FakeResponse(text)
+def _responder(text, stop_reason="end_turn"):
+    return lambda kwargs: FakeResponse(text, stop_reason)
 
 
 def test_reconcile_applies_canonical_cluster_ids():
@@ -159,3 +162,35 @@ def test_reconcile_single_item_skips_call():
 
     assert result[0]["cluster_id"] == "wiz-ghostapproval"
     assert client.messages.calls == []
+
+
+def test_output_budget_scales_with_items_and_caps():
+    """The reconcile output cap grows per item — a fixed 2000-token cap truncated
+    the JSON at ~48 items in production — and is bounded for the non-streaming call."""
+    assert _output_budget(60) >= 60 * 50             # comfortably above the old 2000
+    assert _output_budget(60) < _output_budget(120)  # scales with item count
+    assert _output_budget(10_000) == 16000           # capped for the non-streaming ceiling
+
+
+def test_reconcile_passes_scaled_budget_to_the_api():
+    """reconcile_cluster_ids sizes max_tokens from the item count, not a constant."""
+    many = [{"id": f"id{n}"} for n in range(60)]
+    client = FakeClient(_responder('{"items": []}'))
+
+    reconcile_cluster_ids(client, "claude-sonnet-5", many)
+
+    assert client.messages.calls[0]["max_tokens"] == _output_budget(60)
+
+
+def test_reconcile_truncated_output_logged_and_items_unchanged(caplog):
+    """A max_tokens-truncated response must be reported clearly (not as a
+    cryptic 'Unterminated string') and leave the per-chunk cluster_ids intact."""
+    # stop_reason drives the guard, which returns before the body is ever parsed.
+    client = FakeClient(_responder('{"items": [', stop_reason="max_tokens"))
+
+    with caplog.at_level(logging.WARNING):
+        result = reconcile_cluster_ids(client, "claude-sonnet-5", _items())
+
+    assert [i["cluster_id"] for i in result] == ["wiz-ghostapproval", "thn-symlink", "hallusquat"]
+    messages = " ".join(r.getMessage().lower() for r in caplog.records)
+    assert "truncat" in messages or "max_tokens" in messages
