@@ -20,10 +20,6 @@ delivery:
   slack:
     channel: "C0XXXXXXXXX"   # placeholder channel ID — set your real one in config.local.yaml (the bot must be invited to it)
 
-schedule:
-  hour: 6
-  minute: 0
-
 # NVD filtering
 nvd:
   min_cvss: 7.0
