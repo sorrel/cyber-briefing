@@ -19,7 +19,7 @@
          failure but is really a wrong-context spawn).
 
          12:00 Sunday is the primary fire. 13:30 Sunday is an idempotent
-         fallback — weekly_run.py checks state.db and exits cleanly if this
+         fallback — the weekly run checks state.db and exits cleanly if this
          week's summary is already delivered, so the second fire is a no-op
          on good Sundays.
 
@@ -35,8 +35,7 @@
         <string>run</string>
         <string>--directory</string>
         <string>__PROJECT_DIR__</string>
-        <string>python</string>
-        <string>weekly_run.py</string>
+        <string>cyberbriefing-weekly</string>
     </array>
 
     <key>StartCalendarInterval</key>

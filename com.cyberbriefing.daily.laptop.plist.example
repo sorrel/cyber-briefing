@@ -16,7 +16,7 @@
          (com.cyberbriefing.daily.plist.example):
 
          - Fires 08:40 on WEEKDAYS ONLY (Weekday 1-5 = Mon-Fri), with an
-           idempotent 09:40 fallback: briefing.py checks state.db
+           idempotent 09:40 fallback: the briefing checks state.db
            (was_delivered_today) and exits cleanly if 08:40 already delivered,
            so the second slot is a no-op on good days and a ~1h retry on bad
            ones. A laptop is usually closed early and at weekends, so the
@@ -40,8 +40,7 @@
         <string>run</string>
         <string>--directory</string>
         <string>__PROJECT_DIR__</string>
-        <string>python</string>
-        <string>briefing.py</string>
+        <string>cyberbriefing</string>
     </array>
 
     <key>StartCalendarInterval</key>
