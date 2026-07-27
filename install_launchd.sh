@@ -29,7 +29,7 @@ launchctl list | grep cyberbriefing && echo "✓ Agent is registered." || echo "
 
 echo ""
 echo "=== Step 4: Gather-only test (no scoring, no API calls, no Bear note) ==="
-cd "$SCRIPT_DIR" && "$UV" run python briefing.py --gather-only
+cd "$SCRIPT_DIR" && "$UV" run cyberbriefing --gather-only
 
 echo ""
 echo "=== Step 5: Checking launchctl status and recent logs ==="

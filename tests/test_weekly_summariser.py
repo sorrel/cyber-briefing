@@ -3,7 +3,7 @@ import json
 import anthropic
 import pytest
 
-from weekly.summariser import build_payload, parse_response, summarise_week
+from cyberbriefing.weekly.summariser import build_payload, parse_response, summarise_week
 
 
 def _stories():

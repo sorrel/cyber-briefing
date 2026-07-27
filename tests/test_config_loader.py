@@ -2,7 +2,7 @@ import os
 import threading
 import time
 
-import config_loader
+from cyberbriefing import config_loader
 
 
 def _write(path, text):

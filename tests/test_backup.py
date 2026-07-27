@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 
-from delivery.backup import write_markdown_backup, MARKDOWN_RETENTION_DAYS
+from cyberbriefing.delivery.backup import write_markdown_backup, MARKDOWN_RETENTION_DAYS
 
 
 def _out_dir(home: Path) -> Path:

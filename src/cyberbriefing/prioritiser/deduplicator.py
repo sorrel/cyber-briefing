@@ -15,7 +15,7 @@ import json
 import logging
 from pathlib import Path
 
-from prioritiser.claude_response import TruncatedResponse, extract_json_text
+from cyberbriefing.prioritiser.claude_response import TruncatedResponse, extract_json_text
 
 logger = logging.getLogger("cyberbriefing.prioritiser.deduplicator")
 

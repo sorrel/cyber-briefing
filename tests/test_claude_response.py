@@ -8,7 +8,7 @@ case explicit so each caller can react (scorer retries, deduplicator falls back)
 
 import pytest
 
-from prioritiser.claude_response import TruncatedResponse, extract_json_text
+from cyberbriefing.prioritiser.claude_response import TruncatedResponse, extract_json_text
 
 
 class _Block:

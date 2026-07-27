@@ -12,8 +12,8 @@ from pathlib import Path
 
 import anthropic
 
-from prioritiser.claude_response import extract_json_text
-from prioritiser.deduplicator import reconcile_cluster_ids
+from cyberbriefing.prioritiser.claude_response import extract_json_text
+from cyberbriefing.prioritiser.deduplicator import reconcile_cluster_ids
 
 logger = logging.getLogger("cyberbriefing.prioritiser.scorer")
 

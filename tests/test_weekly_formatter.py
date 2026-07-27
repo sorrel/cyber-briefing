@@ -1,6 +1,6 @@
 from datetime import date
 
-from weekly.formatter import format_weekly
+from cyberbriefing.weekly.formatter import format_weekly
 
 
 def test_format_weekly_builds_title_body_tags():

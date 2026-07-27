@@ -2,11 +2,11 @@
 """Cyber Briefing Tool — Daily cybersecurity intelligence briefing.
 
 Usage:
-    python briefing.py                        # Full run: gather, score, deliver to Bear
-    python briefing.py --dry-run              # Full run but print to stdout instead
-    python briefing.py --gather-only          # Just gather and show item count
-    python briefing.py --stats                # Show database statistics
-    python briefing.py --clear-source <name>  # Reset seen-state for one source
+    uv run cyberbriefing                        # Full run: gather, score, deliver to Bear
+    uv run cyberbriefing --dry-run              # Full run but print to stdout instead
+    uv run cyberbriefing --gather-only          # Just gather and show item count
+    uv run cyberbriefing --stats                # Show database statistics
+    uv run cyberbriefing --clear-source <name>  # Reset seen-state for one source
 """
 
 import argparse
@@ -17,16 +17,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-import config_loader
+from cyberbriefing import config_loader
 
 # NB: the .env load happens inside main() (via config_loader.load_env_with_timeout),
 # NOT at import time. The secrets .env is a 1Password FIFO that blocks open() until
 # 1Password attaches; loading it at import once hung this process — and the test
 # suite — for an hour. Deferring it to main() keeps imports side-effect-free and
 # lets the bounded loader + logging do their job. See CLAUDE.md (2 Jul 2026).
-from collectors import rss, cisa_kev, nvd, hackerone, github_advisories
-from collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper, twis_scraper, anthropic_red_scraper
-from db.state import (
+from cyberbriefing.collectors import rss, cisa_kev, nvd, hackerone, github_advisories
+from cyberbriefing.collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper, twis_scraper, anthropic_red_scraper
+from cyberbriefing.db.state import (
     get_connection,
     filter_unseen,
     mark_seen_batch,
@@ -38,11 +38,11 @@ from db.state import (
     was_delivered_today,
     mark_delivered_today,
 )
-from prioritiser.scorer import score_items
-from prioritiser.clusterer import cluster_items
-from delivery.formatter import DEFAULT_MAX_VULN_ITEMS, format_briefing
-from delivery.bear import deliver_to_stdout
-from delivery.dispatch import deliver
+from cyberbriefing.prioritiser.scorer import score_items
+from cyberbriefing.prioritiser.clusterer import cluster_items
+from cyberbriefing.delivery.formatter import DEFAULT_MAX_VULN_ITEMS, format_briefing
+from cyberbriefing.delivery.bear import deliver_to_stdout
+from cyberbriefing.delivery.dispatch import deliver
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -552,7 +552,7 @@ def main():
     # Load secrets with a hard timeout — the .env is a 1Password FIFO that can
     # block open() forever when 1Password is locked. A timeout (env_ready=False)
     # makes run_pipeline fail fast with an accurate marker instead of hanging.
-    env_ready = config_loader.load_env_with_timeout(Path(__file__).parent / ".env")
+    env_ready = config_loader.load_env_with_timeout(Path(__file__).parents[2] / ".env")
 
     config = load_config()
     success = run_pipeline(

@@ -1,4 +1,4 @@
-from db import state
+from cyberbriefing.db import state
 
 
 def test_weekly_not_delivered_initially(tmp_path):

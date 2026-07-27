@@ -19,8 +19,8 @@ cp .env.example .env
 # Edit .env with real API keys (or use 1Password CLI)
 
 # Quick test
-python briefing.py --gather-only
-python briefing.py --dry-run
+uv run cyberbriefing --gather-only
+uv run cyberbriefing --dry-run
 ```
 
 ## What's been built
@@ -59,7 +59,7 @@ python briefing.py --dry-run
    git add -A && git commit -m "fix: create proper __init__.py files"
    ```
 
-2. **End-to-end test with Claude API**: The scorer module hasn't been tested with a real API key. Run `python briefing.py --dry-run` with `ANTHROPIC_API_KEY` set to verify.
+2. **End-to-end test with Claude API**: The scorer module hasn't been tested with a real API key. Run `uv run cyberbriefing --dry-run` with `ANTHROPIC_API_KEY` set to verify.
 
 ### Should do (Phase 4 polish)
 3. **Error handling**: Add retry logic for transient network failures in collectors (requests.Session with retries adapter).
@@ -88,34 +88,39 @@ python briefing.py --dry-run
 
 ```
 cyberbriefing/
-├── briefing.py               # Entry point
-├── config.yaml               # Source registry + scoring config
-├── pyproject.toml             # uv dependency manifest
-├── uv.lock                    # Pinned dependency lock (uv)
-├── .env.example               # Secrets template
+├── src/
+│   └── cyberbriefing/         # the importable package (src layout)
+│       ├── __init__.py
+│       ├── briefing.py           # Entry point (console script: cyberbriefing)
+│       ├── weekly_run.py         # Weekly entry point (cyberbriefing-weekly)
+│       ├── config_loader.py      # loads config.yaml (+ config.local.yaml) and .env
+│       ├── collectors/
+│       │   ├── base.py           # Common schema
+│       │   ├── rss.py            # Generic RSS
+│       │   ├── cisa_kev.py       # CISA KEV API
+│       │   ├── nvd.py            # NVD CVE API
+│       │   ├── hackerone.py      # HackerOne API
+│       │   ├── github_advisories.py  # GitHub GraphQL
+│       │   ├── enisa_scraper.py      # ENISA web scraper
+│       │   └── ico_scraper.py        # ICO web scraper
+│       ├── prioritiser/
+│       │   ├── scorer.py         # Claude API call
+│       │   ├── clusterer.py      # Story grouping
+│       │   └── prompt.txt        # Editable scoring prompt
+│       ├── delivery/
+│       │   ├── formatter.py      # Markdown output
+│       │   ├── dispatch.py       # Routes to bear / slack / stdout
+│       │   ├── bear.py           # Bear Notes delivery
+│       │   └── slack.py          # Slack delivery
+│       └── db/
+│           └── state.py          # SQLite state tracking
+├── config.yaml               # Source registry + scoring config (repo root)
+├── config.local.yaml.example # Per-machine overrides template
+├── pyproject.toml            # uv dependency manifest + console scripts
+├── uv.lock                   # Pinned dependency lock (uv)
+├── .env.example              # Secrets template
 ├── .gitignore
 ├── README.md
-├── com.cyberbriefing.daily.plist  # launchd schedule
-├── collectors/
-│   ├── __init__.py
-│   ├── base.py               # Common schema
-│   ├── rss.py                # Generic RSS (12 feeds)
-│   ├── cisa_kev.py           # CISA KEV API
-│   ├── nvd.py                # NVD CVE API
-│   ├── hackerone.py          # HackerOne API
-│   ├── github_advisories.py  # GitHub GraphQL
-│   ├── enisa_scraper.py      # ENISA web scraper
-│   └── ico_scraper.py        # ICO web scraper
-├── prioritiser/
-│   ├── __init__.py
-│   ├── scorer.py             # Claude API call
-│   ├── clusterer.py          # Story grouping
-│   └── prompt.txt            # Editable scoring prompt
-├── delivery/
-│   ├── __init__.py
-│   ├── formatter.py          # Markdown output
-│   └── bear.py               # Bear Notes delivery
-└── db/
-    ├── __init__.py
-    └── state.py              # SQLite state tracking
+├── tests/                    # test suite (stays at repo root)
+└── com.cyberbriefing.daily.plist.example  # launchd schedule template
 ```

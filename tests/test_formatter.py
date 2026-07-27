@@ -1,4 +1,4 @@
-from delivery.formatter import format_briefing
+from cyberbriefing.delivery.formatter import format_briefing
 
 
 def _vuln(n: int, composite: float) -> dict:

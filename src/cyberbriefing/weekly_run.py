@@ -13,13 +13,13 @@ import sys
 from datetime import date
 from pathlib import Path
 
-import config_loader
-from db import state
-from delivery.bear import deliver_to_stdout
-from delivery.dispatch import deliver
-from weekly.formatter import format_weekly
-from weekly.reader import read_week
-from weekly.summariser import summarise_week
+from cyberbriefing import config_loader
+from cyberbriefing.db import state
+from cyberbriefing.delivery.bear import deliver_to_stdout
+from cyberbriefing.delivery.dispatch import deliver
+from cyberbriefing.weekly.formatter import format_weekly
+from cyberbriefing.weekly.reader import read_week
+from cyberbriefing.weekly.summariser import summarise_week
 
 logger = logging.getLogger("cyberbriefing.weekly")
 
@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     # secrets file is a 1Password FIFO that can block open() forever when
     # locked. Mirrors briefing.py; see CLAUDE.md (2 Jul 2026).
     watchdog = config_loader.arm_runtime_watchdog(max_seconds=900)
-    env_ready = config_loader.load_env_with_timeout(Path(__file__).parent / ".env")
+    env_ready = config_loader.load_env_with_timeout(Path(__file__).parents[2] / ".env")
     if not env_ready and not args.dry_run:
         _write_failure(
             OUTPUT_DIR, date.today(),

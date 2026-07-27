@@ -4,7 +4,7 @@ cloudseclist and TWIS scrapers."""
 
 import pytest
 
-from collectors.base import host_matches
+from cyberbriefing.collectors.base import host_matches
 
 
 @pytest.mark.parametrize(

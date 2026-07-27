@@ -1,6 +1,6 @@
 """Tests for delivery/slack_format.py."""
 
-from delivery.slack_format import (
+from cyberbriefing.delivery.slack_format import (
     markdown_to_block_groups,
     _md_inline_to_mrkdwn,
     MAX_BLOCKS_PER_MESSAGE,

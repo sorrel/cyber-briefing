@@ -1,7 +1,7 @@
 from datetime import date
 from pathlib import Path
 
-from weekly.reader import parse_briefing_text, select_week_files, read_week
+from cyberbriefing.weekly.reader import parse_briefing_text, select_week_files, read_week
 
 FIXTURE = """# Cyber Briefing — 2026-06-19
 

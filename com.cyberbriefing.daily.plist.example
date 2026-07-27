@@ -19,7 +19,7 @@
          failure but is really a wrong-context spawn).
 
          06:15 is the primary fire. 07:30 is an idempotent fallback —
-         briefing.py checks state.db and exits cleanly if today is already
+         the briefing checks state.db and exits cleanly if today is already
          delivered, so the second fire is a no-op on good days.
 
          Weekday 1–5 = Monday–Friday only; Saturday (6) and Sunday (0/7) are
@@ -45,8 +45,7 @@
         <string>run</string>
         <string>--directory</string>
         <string>__PROJECT_DIR__</string>
-        <string>python</string>
-        <string>briefing.py</string>
+        <string>cyberbriefing</string>
     </array>
 
     <key>StartCalendarInterval</key>

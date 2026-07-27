@@ -11,7 +11,7 @@ import time
 
 import requests
 
-from delivery.slack_format import markdown_to_block_groups
+from cyberbriefing.delivery.slack_format import markdown_to_block_groups
 
 logger = logging.getLogger("cyberbriefing.delivery.slack")
 

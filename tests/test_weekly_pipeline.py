@@ -1,8 +1,8 @@
 from datetime import date
 from pathlib import Path
 
-import weekly_run as weekly_mod
-from db import state
+import cyberbriefing.weekly_run as weekly_mod
+from cyberbriefing.db import state
 
 FIXTURE = """# Cyber Briefing — 2026-06-19
 

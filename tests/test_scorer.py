@@ -5,8 +5,8 @@ is exercised end-to-end elsewhere; here the Anthropic client is faked so no
 network call happens, and reconcile_cluster_ids is replaced with a spy.
 """
 
-import prioritiser.scorer as scorer_mod
-from prioritiser.scorer import score_items
+import cyberbriefing.prioritiser.scorer as scorer_mod
+from cyberbriefing.prioritiser.scorer import score_items
 
 
 class FakeBlock:
