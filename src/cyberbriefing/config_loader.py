@@ -20,9 +20,11 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-_DIR = Path(__file__).parent
-CONFIG_PATH = _DIR / "config.yaml"
-LOCAL_CONFIG_PATH = _DIR / "config.local.yaml"
+# config.yaml / config.local.yaml live at the repo root, two levels above this
+# module (src/cyberbriefing/config_loader.py → src/cyberbriefing → src → repo).
+_REPO_ROOT = Path(__file__).parents[2]
+CONFIG_PATH = _REPO_ROOT / "config.yaml"
+LOCAL_CONFIG_PATH = _REPO_ROOT / "config.local.yaml"
 
 
 def _deep_merge(base: dict, override: dict) -> dict:

@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from db.state import get_connection, update_scraper_run
-from briefing import _run_scraper, _SCRAPER_REGISTRY, _secrets_blocked
+from cyberbriefing.db.state import get_connection, update_scraper_run
+from cyberbriefing.briefing import _run_scraper, _SCRAPER_REGISTRY, _secrets_blocked
 
 
 @pytest.fixture

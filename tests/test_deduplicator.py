@@ -9,8 +9,8 @@ failure must return the items unchanged rather than break the briefing.
 
 import logging
 
-from prioritiser.clusterer import cluster_items
-from prioritiser.deduplicator import _output_budget, reconcile_cluster_ids
+from cyberbriefing.prioritiser.clusterer import cluster_items
+from cyberbriefing.prioritiser.deduplicator import _output_budget, reconcile_cluster_ids
 
 
 class FakeBlock:

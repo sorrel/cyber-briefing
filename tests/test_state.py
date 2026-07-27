@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from db.state import (
+from cyberbriefing.db.state import (
     get_connection,
     is_seen,
     filter_unseen,

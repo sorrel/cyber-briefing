@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "cyberbriefing"
 version = "0.1.0"
@@ -13,9 +17,13 @@ dependencies = [
 ]
 
 [project.scripts]
-cyberbriefing = "briefing:main"
+cyberbriefing = "cyberbriefing.briefing:main"
+cyberbriefing-weekly = "cyberbriefing.weekly_run:main"
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cyberbriefing"]

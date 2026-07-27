@@ -1,7 +1,7 @@
 """Tests for delivery/dispatch.py routing + backup invariant."""
 
-import delivery.dispatch as dispatch_mod
-from delivery.dispatch import deliver
+import cyberbriefing.delivery.dispatch as dispatch_mod
+from cyberbriefing.delivery.dispatch import deliver
 
 
 def _spy(monkeypatch):

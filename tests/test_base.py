@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from collectors.base import (
+from cyberbriefing.collectors.base import (
     USER_AGENT_BOT,
     USER_AGENT_BROWSER,
     make_item,

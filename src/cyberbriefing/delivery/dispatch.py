@@ -9,9 +9,9 @@ success criterion: a flaky Slack/Bear post never reports total failure.
 
 import logging
 
-from delivery.backup import write_markdown_backup
-from delivery.bear import deliver_to_bear, deliver_to_stdout
-from delivery.slack import deliver_to_slack
+from cyberbriefing.delivery.backup import write_markdown_backup
+from cyberbriefing.delivery.bear import deliver_to_bear, deliver_to_stdout
+from cyberbriefing.delivery.slack import deliver_to_slack
 
 logger = logging.getLogger("cyberbriefing.delivery.dispatch")
 

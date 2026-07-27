@@ -1,7 +1,7 @@
 """Tests for delivery/slack.py (Slack Web API client)."""
 
-import delivery.slack as slack_mod
-from delivery.slack import deliver_to_slack
+import cyberbriefing.delivery.slack as slack_mod
+from cyberbriefing.delivery.slack import deliver_to_slack
 
 
 class FakeResp:
