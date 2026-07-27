@@ -21,13 +21,13 @@ cp .env.example .env
 # Edit .env with your actual API keys
 
 # 3. Test with a dry run (prints to terminal instead of delivering)
-uv run python briefing.py --dry-run
+uv run cyberbriefing --dry-run
 
 # 4. Test just the gathering stage
-uv run python briefing.py --gather-only
+uv run cyberbriefing --gather-only
 
 # 5. Full run (delivers to Bear or Slack, per config)
-uv run python briefing.py
+uv run cyberbriefing
 ```
 
 This project uses [uv](https://github.com/astral-sh/uv) for dependency management. Run `uv sync` if you need to install dependencies explicitly.
@@ -39,13 +39,13 @@ A companion pipeline can roll a week of briefings into a single **Weekly Cyber S
 It always targets the **most recently completed Monday–Sunday week**, so it produces the same summary whether you schedule it for Sunday evening, Monday morning, or run it by hand. Run it as often or as rarely as suits you; it needs the daily backups in `~/cyberbriefing-output/` to have something to read.
 
 ```bash
-uv run python weekly_run.py --dry-run   # preview to terminal
-uv run python weekly_run.py             # real run → Bear or Slack (per config)
+uv run cyberbriefing-weekly --dry-run   # preview to terminal
+uv run cyberbriefing-weekly             # real run → Bear or Slack (per config)
 ```
 
 ## Scheduling with launchd
 
-Nothing here schedules itself — `briefing.py` is a one-shot script, and launchd is simply the recommended way to fire it unattended on macOS. The design is **cron-style**: launchd spawns a fresh process at each calendar slot, and there is no long-running daemon. Pairing a primary slot with a later fallback slot is worth doing, because a run no-ops cleanly if the day was already delivered, making the fallback free on good days and the safety net on bad ones.
+Nothing here schedules itself — `cyberbriefing` is a one-shot command, and launchd is simply the recommended way to fire it unattended on macOS. The design is **cron-style**: launchd spawns a fresh process at each calendar slot, and there is no long-running daemon. Pairing a primary slot with a later fallback slot is worth doing, because a run no-ops cleanly if the day was already delivered, making the fallback free on good days and the safety net on bad ones.
 
 The plists carry per-machine values (absolute path, username, schedule), so the **real `*.plist` files are gitignored** — only generic `*.plist.example` templates are committed. Two archetypes ship as starting points. **Their times are examples, not requirements** — edit the `StartCalendarInterval` block to whatever suits you:
 
@@ -85,7 +85,7 @@ On an **always-on desktop**, also schedule a real user-session wake a few minute
 sudo pmset repeat wakeorpoweron MTWRF 06:10:00   # verify with: pmset -g sched
 ```
 
-Repeat steps 1–3 for the weekly template. Logs are at `/tmp/cyberbriefing.log` / `.err` (daily) and `/tmp/cyberbriefing-weekly.log` / `.err` (weekly). Test the pipeline any time without launchd via `uv run python briefing.py --dry-run`.
+Repeat steps 1–3 for the weekly template. Logs are at `/tmp/cyberbriefing.log` / `.err` (daily) and `/tmp/cyberbriefing-weekly.log` / `.err` (weekly). Test the pipeline any time without launchd via `uv run cyberbriefing --dry-run`.
 
 ## Configuration
 
@@ -98,7 +98,7 @@ Edit `config.yaml` to:
 - Choose the scoring model (`scoring.model`)
 - Switch delivery method (`delivery.method`: bear, slack, stdout, or markdown_file)
 
-Edit `prioritiser/prompt.txt` to tune the AI scoring. This is where you adjust priorities without touching code.
+Edit `src/cyberbriefing/prioritiser/prompt.txt` to tune the AI scoring. This is where you adjust priorities without touching code.
 
 ### Per-machine overrides (`config.local.yaml`)
 

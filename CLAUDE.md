@@ -28,10 +28,10 @@ Before applying any scheduling/network reasoning, note which archetype you mean:
 
 ```bash
 # Always use uv
-uv run python briefing.py --dry-run     # Full pipeline → stdout (no state changes)
-uv run python briefing.py --gather-only # Collect only, mark seen, no scoring
-uv run python briefing.py --stats       # Show DB stats by source
-uv run python briefing.py               # Real run → Bear or Slack (per delivery.method)
+uv run cyberbriefing --dry-run     # Full pipeline → stdout (no state changes)
+uv run cyberbriefing --gather-only # Collect only, mark seen, no scoring
+uv run cyberbriefing --stats       # Show DB stats by source
+uv run cyberbriefing               # Real run → Bear or Slack (per delivery.method)
 ```
 
 **Dependency management is uv-only.** The manifest is `pyproject.toml` + `uv.lock`;
@@ -43,35 +43,46 @@ pinned in `.python-version`. Dependabot tracks the `uv` ecosystem, not pip.
 ## Architecture
 
 ```
-briefing.py          ← Entry point (CLI: --dry-run, --gather-only, --stats, -v)
-config.yaml          ← All source URLs, scoring weights, thresholds (edit me)
-config.local.yaml    ← Per-machine overrides, gitignored (copied from config.local.yaml.example)
-config_loader.py     ← Loads config.yaml, deep-merges config.local.yaml over it
-prioritiser/
-  prompt.txt          ← Claude scoring rubric (edit me to tune output)
-  scorer.py           ← Claude API call; scores items in 50-item chunks, returns scored JSON
-  claude_response.py  ← Shared: extract JSON from a Claude response; raises TruncatedResponse at max_tokens
-  deduplicator.py     ← Cross-chunk cluster-id reconciliation (one extra Claude call over all scored items)
-  dedup_prompt.txt    ← Prompt for the reconciliation pass
-  clusterer.py        ← Merges items sharing a cluster_id (highest score wins)
-collectors/
-  rss.py             ← Generic RSS/Atom for all feed sources
-  cisa_kev.py        ← CISA Known Exploited Vulnerabilities catalogue
-  nvd.py             ← NVD CVE API (CVSS ≥ 7.0 filter)
-  hackerone.py       ← HackerOne Hacktivity (requires auth)
-  github_advisories.py ← GitHub GraphQL advisories
-  enisa_scraper.py   ← ENISA publications scraper (24h interval)
-  ico_scraper.py     ← ICO enforcement actions scraper (weekly)
-delivery/
-  formatter.py       ← Converts scored items → markdown (title, body, tags)
-  dispatch.py        ← Routes (title, body, tags) to the configured delivery.method; always writes the markdown backup
-  bear.py            ← Bear Notes via x-callback-url (Bear-only; backup lives in dispatch/backup now)
-  slack.py           ← Slack chat.postMessage delivery (native message + threaded overflow)
-  slack_format.py    ← Converts briefing markdown → Slack Block Kit groups
-  backup.py          ← Always-on markdown backup to ~/cyberbriefing-output/ (read by the weekly pipeline)
-db/
-  state.py           ← SQLite at ~/.cyberbriefing/state.db; tracks seen items + scraper schedules
+src/cyberbriefing/     ← the importable package (src layout); imports are cyberbriefing.*
+  briefing.py          ← Daily entry point (console script: cyberbriefing)
+  weekly_run.py        ← Weekly entry point (console script: cyberbriefing-weekly)
+  config_loader.py     ← Loads config.yaml, deep-merges config.local.yaml over it
+  prioritiser/
+    prompt.txt          ← Claude scoring rubric (edit me to tune output)
+    scorer.py           ← Claude API call; scores items in 50-item chunks, returns scored JSON
+    claude_response.py  ← Shared: extract JSON from a Claude response; raises TruncatedResponse at max_tokens
+    deduplicator.py     ← Cross-chunk cluster-id reconciliation (one extra Claude call over all scored items)
+    dedup_prompt.txt    ← Prompt for the reconciliation pass
+    clusterer.py        ← Merges items sharing a cluster_id (highest score wins)
+  collectors/
+    rss.py             ← Generic RSS/Atom for all feed sources
+    cisa_kev.py        ← CISA Known Exploited Vulnerabilities catalogue
+    nvd.py             ← NVD CVE API (CVSS ≥ 7.0 filter)
+    hackerone.py       ← HackerOne Hacktivity (requires auth)
+    github_advisories.py ← GitHub GraphQL advisories
+    enisa_scraper.py   ← ENISA publications scraper (24h interval)
+    ico_scraper.py     ← ICO enforcement actions scraper (weekly)
+  delivery/
+    formatter.py       ← Converts scored items → markdown (title, body, tags)
+    dispatch.py        ← Routes (title, body, tags) to the configured delivery.method; always writes the markdown backup
+    bear.py            ← Bear Notes via x-callback-url (Bear-only; backup lives in dispatch/backup now)
+    slack.py           ← Slack chat.postMessage delivery (native message + threaded overflow)
+    slack_format.py    ← Converts briefing markdown → Slack Block Kit groups
+    backup.py          ← Always-on markdown backup to ~/cyberbriefing-output/ (read by the weekly pipeline)
+  db/
+    state.py           ← SQLite at ~/.cyberbriefing/state.db; tracks seen items + scraper schedules
+  weekly/              ← Weekly-summary package (reader, summariser, formatter, prompt.txt) — see Weekly summary
+config.yaml            ← All source URLs, scoring weights, thresholds (edit me) — repo root, NOT in the package
+config.local.yaml      ← Per-machine overrides, gitignored (copied from config.local.yaml.example) — repo root
+tests/                 ← Test suite — repo root
 ```
+
+> **Paths in this document are package-relative.** All source lives under
+> `src/cyberbriefing/`; elsewhere a name like `delivery/dispatch.py` means
+> `src/cyberbriefing/delivery/dispatch.py`, and `config_loader.py` means
+> `src/cyberbriefing/config_loader.py`. `config.yaml`, `config.local.yaml`,
+> `.env` and `tests/` stay at the repo root — `config_loader.py` resolves the
+> config files there via `Path(__file__).parents[2]`.
 
 ## Pipeline flow
 
@@ -124,10 +135,10 @@ Edit `config.yaml`:
 
 > This section uses the **always-on desktop** templates (`com.cyberbriefing.*.plist`). The **sleeping-laptop** templates (`com.cyberbriefing.*.laptop.plist`) differ only in schedule (08:40 weekdays, `Weekday` 1–5; Monday 10:00 weekly) and drop the `pmset` wake — a closed lid can't be woken, so launchd fires the missed calendar job on the next wake. Install them the same way, substituting the `.laptop.plist` filenames. Everything else (Aqua/Interactive/`caffeinate`/idempotency) is identical.
 
-Cron-style launchd: a fresh `briefing.py` process is spawned at each calendar slot. The schedule runs **Monday–Friday only** (`Weekday` 1–5 on every slot); Saturday and Sunday are deliberately omitted — the weekend has no daily briefing, and the weekly summary runs on Sunday. Two slots per day:
+Cron-style launchd: a fresh `cyberbriefing` process is spawned at each calendar slot. The schedule runs **Monday–Friday only** (`Weekday` 1–5 on every slot); Saturday and Sunday are deliberately omitted — the weekend has no daily briefing, and the weekly summary runs on Sunday. Two slots per day:
 
 - **06:15** — primary fire.
-- **07:30** — idempotent fallback. `briefing.py` checks `state.db` (`was_delivered_today()`) and exits cleanly if today's briefing has already been delivered, so this is a no-op on good days and the only thing that runs on bad days.
+- **07:30** — idempotent fallback. The `cyberbriefing` run checks `state.db` (`was_delivered_today()`) and exits cleanly if today's briefing has already been delivered, so this is a no-op on good days and the only thing that runs on bad days.
 
 The plist is hardened for correct user GUI context — this is what the previous long-running daemon got wrong:
 
@@ -173,8 +184,8 @@ tail -f /tmp/cyberbriefing.err
 A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and rolls the week's daily briefings into one weekly summary — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories. (Backup retention was raised 7 → 10 days so Sunday always sees the full week.) The sleeping-laptop archetype runs this **Monday 10:00** instead; `weekly/reader.py: select_week_files` targets the **most recently completed Mon→Sun week**, so both a Sunday run and a Monday run summarise the week that just ended — not the empty week starting today.
 
 ```bash
-uv run python weekly_run.py --dry-run   # → stdout, no state changes
-uv run python weekly_run.py             # → Bear or Slack (per delivery.method)
+uv run cyberbriefing-weekly --dry-run   # → stdout, no state changes
+uv run cyberbriefing-weekly             # → Bear or Slack (per delivery.method)
 ```
 
 - **Code:** `weekly_run.py` + the `weekly/` package (`reader.py`, `summariser.py`, `prompt.txt`, `formatter.py`); reuses `delivery/bear.py` and `db/state.py`.
