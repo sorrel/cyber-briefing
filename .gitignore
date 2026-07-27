@@ -7,6 +7,8 @@ config.local.yaml
 # *.plist.example, so the templates stay tracked; the negation is belt-and-braces.)
 *.plist
 !*.plist.example
+# install_launchd.sh backs up an existing real plist before regenerating it.
+*.plist.bak.*
 
 *.pyc
 __pycache__/
