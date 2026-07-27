@@ -201,7 +201,7 @@ that mention `briefing.py`/`weekly_run.py` are updated for accuracy.
 needs no change; still grep the whole file for stray `briefing.py`/`weekly_run.py`
 references and update any found.
 
-## Docs
+## Docs and CLI help text
 
 Update path and command references in:
 
@@ -210,8 +210,23 @@ Update path and command references in:
   (`uv run python briefing.py --dry-run` → `uv run cyberbriefing --dry-run`), the
   weekly commands (`uv run python weekly_run.py` → `uv run cyberbriefing-weekly`),
   and the Scheduling section's `python briefing.py` references.
-- **`README.md`** — any run commands / structure references.
-- **`HANDOFF.md`** — any file-path or command references.
+- **`README.md`** — run commands at lines ~24/27/30 (`uv run python briefing.py …`
+  → `uv run cyberbriefing …`), ~42/43 (`uv run python weekly_run.py …` →
+  `uv run cyberbriefing-weekly …`), line ~48 prose ("`briefing.py` is a one-shot
+  script"), and line ~88's test command.
+- **`HANDOFF.md`** — the `python briefing.py …` commands (lines ~22/23/62) and the
+  structure tree (line ~91, `briefing.py # Entry point` → the `src/` path).
+
+**CLI help / usage text** (the "help" surface):
+
+- **`briefing.py` module docstring (lines 4–9)** — the `Usage:` block hardcodes
+  `python briefing.py …`; rewrite to `uv run cyberbriefing …` (or `cyberbriefing
+  …`). This is the only hardcoded usage text.
+- **No change** to the argparse `description` strings (`briefing.py:502–505`,
+  `weekly_run.py:97`) — they contain no filename, and argparse's `prog` auto-
+  resolves to the invoked console-script name (`cyberbriefing` /
+  `cyberbriefing-weekly`), so `--help` usage lines update themselves.
+- `weekly_run.py` has no module-level `Usage:` docstring to update.
 
 ## What explicitly does NOT change
 
