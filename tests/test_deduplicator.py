@@ -194,3 +194,23 @@ def test_reconcile_truncated_output_logged_and_items_unchanged(caplog):
     assert [i["cluster_id"] for i in result] == ["wiz-ghostapproval", "thn-symlink", "hallusquat"]
     messages = " ".join(r.getMessage().lower() for r in caplog.records)
     assert "truncat" in messages or "max_tokens" in messages
+
+
+def test_reconcile_constrains_output_to_the_cluster_map_schema():
+    """Claude intermittently ends a response one closing brace short of valid
+    JSON, so json.loads rejected the whole map and the pass fell back to
+    per-chunk ids. Both copies of a story then survive the max_items trim and
+    each consume a briefing slot, so let the API enforce the shape instead.
+    """
+    client = FakeClient(_responder('{"items": [{"id": "a", "cluster_id": "x"}]}'))
+
+    reconcile_cluster_ids(client, "m", _items())
+
+    fmt = client.messages.calls[0].get("output_config", {}).get("format", {})
+    assert fmt.get("type") == "json_schema", (
+        f"reconcile request did not constrain output to a JSON schema: {fmt!r}"
+    )
+    entry = fmt["schema"]["properties"]["items"]["items"]
+    assert set(entry["required"]) == {"id", "cluster_id"}, (
+        f"schema must require both id and cluster_id, got {entry['required']!r}"
+    )
