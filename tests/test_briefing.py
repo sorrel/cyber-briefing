@@ -8,7 +8,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from cyberbriefing.db.state import get_connection, update_scraper_run
-from cyberbriefing.briefing import _run_scraper, _SCRAPER_REGISTRY, _secrets_blocked
+from cyberbriefing.briefing import (
+    _run_scraper,
+    _SCRAPER_REGISTRY,
+    _secrets_blocked,
+    _partition_for_mark_seen,
+)
 
 
 @pytest.fixture
@@ -141,3 +146,38 @@ class TestSecretsBlocked:
     def test_allows_gather_only_even_when_env_not_ready(self):
         # Gathering needs no secrets, so a locked machine stays inspectable.
         assert _secrets_blocked(env_ready=False, dry_run=False, gather_only=True) is False
+
+
+# ---------------------------------------------------------------------------
+# _partition_for_mark_seen — an item whose scoring call failed must stay unseen
+# so the next launchd fire can retry it. Marking it seen loses that story for
+# good (3 Aug 2026: 103 of 123 items were lost this way).
+# ---------------------------------------------------------------------------
+
+class TestPartitionForMarkSeen:
+    def _items(self, *ids):
+        return [{"id": i} for i in ids]
+
+    def test_scored_items_are_marked_included(self):
+        included, excluded = _partition_for_mark_seen(
+            self._items("a", "b"), scored_ids={"a"}, unscored_ids=set()
+        )
+        assert [i["id"] for i in included] == ["a"]
+        assert [i["id"] for i in excluded] == ["b"]
+
+    def test_items_from_a_failed_chunk_are_left_unseen(self):
+        included, excluded = _partition_for_mark_seen(
+            self._items("a", "b", "c"), scored_ids={"a"}, unscored_ids={"c"}
+        )
+        marked = {i["id"] for i in included} | {i["id"] for i in excluded}
+        assert "c" not in marked, "a never-scored item must not be marked seen"
+        assert marked == {"a", "b"}
+
+    def test_a_scored_item_is_still_marked_even_if_also_reported_unscored(self):
+        # Belt and braces: a half-chunk retry can score an item the full-chunk
+        # attempt failed on. Having a score wins — never re-show it.
+        included, excluded = _partition_for_mark_seen(
+            self._items("a"), scored_ids={"a"}, unscored_ids={"a"}
+        )
+        assert [i["id"] for i in included] == ["a"]
+        assert excluded == []
