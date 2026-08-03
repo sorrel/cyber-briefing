@@ -19,7 +19,59 @@ logger = logging.getLogger("cyberbriefing.prioritiser.scorer")
 
 PROMPT_PATH = Path(__file__).parent / "prompt.txt"
 CHUNK_SIZE = 50
-MAX_TOKENS = 8000
+# A 50-item chunk runs to roughly 7k output tokens, which left almost no room
+# under the old 8k ceiling. max_tokens is a cap, not a spend, so give it slack.
+MAX_TOKENS = 16000
+
+# Claude occasionally ends a scoring response one closing brace short of valid
+# JSON — stop_reason "end_turn", nothing truncated, just the top-level "}"
+# missing. json.loads rejects the whole payload, and on 3 Aug 2026 that
+# discarded 2 of 3 chunks (103 of 123 items). output_config.format makes the
+# API constrain the response to this schema instead of asking the prompt
+# nicely, so the failure mode cannot recur. Note the JSON Schema subset:
+# every object needs "required" + "additionalProperties": false, and numeric
+# bounds (the 1-5 score range) are not supported — prompt.txt states those.
+_SCORES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "geographic": {"type": "integer"},
+        "domain": {"type": "integer"},
+        "actionability": {"type": "integer"},
+        "novelty": {"type": "integer"},
+    },
+    "required": ["geographic", "domain", "actionability", "novelty"],
+    "additionalProperties": False,
+}
+SCORED_ITEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "scores": _SCORES_SCHEMA,
+        "composite": {"type": "number"},
+        "tier": {
+            "type": "string",
+            "enum": ["critical", "notable", "radar", "britain", "excluded"],
+        },
+        "summary": {"type": "string"},
+        "annotation": {"type": "string"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "cluster_id": {"type": "string"},
+    },
+    "required": [
+        "id", "scores", "composite", "tier",
+        "summary", "annotation", "tags", "cluster_id",
+    ],
+    "additionalProperties": False,
+}
+RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "briefing_date": {"type": "string"},
+        "items": {"type": "array", "items": SCORED_ITEM_SCHEMA},
+    },
+    "required": ["briefing_date", "items"],
+    "additionalProperties": False,
+}
 
 
 def load_prompt() -> str:
@@ -42,10 +94,14 @@ def _call_claude(client: anthropic.Anthropic, model: str, system_prompt: str,
     response = client.messages.create(
         model=model,
         max_tokens=MAX_TOKENS,
-        # Sonnet 5 turns adaptive thinking ON when `thinking` is omitted (it was
-        # OFF on Sonnet 4.6). Keep it off: thinking would share the MAX_TOKENS
-        # budget with the JSON payload and risk truncating it.
+        # Opus 5 / Sonnet 5 turn adaptive thinking ON when `thinking` is omitted
+        # (it was OFF on Sonnet 4.6). Keep it off: thinking would share the
+        # MAX_TOKENS budget with the JSON payload and risk truncating it.
+        # "disabled" is only accepted at effort high or below — the default is
+        # high, so don't add an effort override above it here.
         thinking={"type": "disabled"},
+        # Constrain the response to the scoring schema — see RESPONSE_SCHEMA.
+        output_config={"format": {"type": "json_schema", "schema": RESPONSE_SCHEMA}},
         system=[
             {
                 "type": "text",
@@ -63,32 +119,44 @@ def _call_claude(client: anthropic.Anthropic, model: str, system_prompt: str,
     try:
         result = json.loads(cleaned)
     except json.JSONDecodeError as e:
-        logger.debug("Raw response snippet: %s", cleaned[:500])
+        # Log the tail, not the head, and at WARNING: this fails at the very end
+        # of the payload, and a DEBUG-only snippet made the 3 Aug 2026 failure
+        # impossible to diagnose from the launchd log.
+        logger.warning(
+            "Unparseable scoring JSON (%d chars), tail: %r", len(cleaned), cleaned[-200:]
+        )
         raise ValueError(f"JSON parse failed: {e}") from e
 
     return result.get("items", [])
 
 
 def _score_chunk(client: anthropic.Anthropic, model: str, system_prompt: str,
-                 items: list[dict], max_items: int) -> tuple[list[dict], bool]:
+                 items: list[dict], max_items: int
+                 ) -> tuple[list[dict], bool, list[dict]]:
     """Score a chunk, retrying once at half-size if the call fails.
 
-    Returns (items, succeeded). succeeded=False means the API/parsing
+    Returns (items, succeeded, unscored). succeeded=False means the API/parsing
     failed for the entire chunk (full call and both halves) — used by the
     caller to detect a total-failure morning and skip mark-seen so the
     next launchd fire can retry the same items.
+
+    unscored lists the input items whose scoring call never came back, whether
+    or not the rest of the chunk survived. Without it a partly-failed chunk
+    still counted as a success and its items were marked seen, so they never
+    came back — 103 items were lost that way on 3 Aug 2026.
     """
     try:
-        return _call_claude(client, model, system_prompt, items, max_items), True
+        return _call_claude(client, model, system_prompt, items, max_items), True, []
     except (ValueError, anthropic.APIError) as e:
         logger.warning("Chunk of %d items failed (%s) — retrying in two halves", len(items), e)
 
     if len(items) <= 1:
         logger.error("Single-item chunk failed — skipping")
-        return [], False
+        return [], False, list(items)
 
     mid = len(items) // 2
     results: list[dict] = []
+    unscored: list[dict] = []
     any_half_succeeded = False
     for half in (items[:mid], items[mid:]):
         try:
@@ -96,7 +164,8 @@ def _score_chunk(client: anthropic.Anthropic, model: str, system_prompt: str,
             any_half_succeeded = True
         except (ValueError, anthropic.APIError) as e:
             logger.error("Half-chunk of %d items failed — skipping: %s", len(half), e)
-    return results, any_half_succeeded
+            unscored.extend(half)
+    return results, any_half_succeeded, unscored
 
 
 def score_items(items: list[dict], config: dict | None = None) -> dict:
@@ -154,13 +223,22 @@ def score_items(items: list[dict], config: dict | None = None) -> dict:
                 "failure_reason": f"Anthropic client init failed: {e}"}
 
     all_scored: list[dict] = []
+    unscored: list[dict] = []
     chunks_failed = 0
     for i, chunk in enumerate(chunks, 1):
         logger.info("Scoring chunk %d/%d (%d items)", i, n_chunks, len(chunk))
-        scored, ok = _score_chunk(client, model, system_prompt, chunk, max_items)
+        scored, ok, chunk_unscored = _score_chunk(
+            client, model, system_prompt, chunk, max_items
+        )
         all_scored.extend(scored)
+        unscored.extend(chunk_unscored)
         if not ok:
             chunks_failed += 1
+    if unscored:
+        logger.warning(
+            "%d item(s) never reached Claude — left unseen for the next run",
+            len(unscored),
+        )
 
     # Chunks are scored in independent Claude calls, so the same story split
     # across two chunks gets two mismatched cluster_id slugs that clusterer.py
@@ -193,6 +271,8 @@ def score_items(items: list[dict], config: dict | None = None) -> dict:
         "scoring_failed": scoring_failed,
         "chunks_total": n_chunks,
         "chunks_failed": chunks_failed,
+        # Items whose scoring call failed. The caller must not mark these seen.
+        "unscored_ids": [it["id"] for it in unscored if it.get("id")],
         "failure_reason": (
             f"All {n_chunks} scoring chunk(s) failed — likely Anthropic API overload"
             if scoring_failed else ""

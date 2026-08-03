@@ -168,6 +168,31 @@ def _secrets_blocked(env_ready: bool, dry_run: bool, gather_only: bool) -> bool:
     return not env_ready and not dry_run and not gather_only
 
 
+def _partition_for_mark_seen(
+    new_items: list[dict],
+    scored_ids: set,
+    unscored_ids: set,
+) -> tuple[list[dict], list[dict]]:
+    """Split gathered items into (mark seen + included, mark seen + excluded).
+
+    Items in neither list are deliberately left unseen. An item Claude scored
+    but left out of the briefing is genuinely excluded and must never come back;
+    an item whose *scoring call failed* was never judged at all, so marking it
+    seen silently destroys the story. Before this split, one surviving chunk was
+    enough for the run to count as a success and mark everything seen — on
+    3 Aug 2026 that lost 103 of 123 items, which is why unscored items now stay
+    unseen for the next launchd fire to retry.
+    """
+    included, excluded = [], []
+    for item in new_items:
+        item_id = item.get("id")
+        if item_id in scored_ids:
+            included.append(item)
+        elif item_id not in unscored_ids:
+            excluded.append(item)
+    return included, excluded
+
+
 def run_pipeline(
     config: dict,
     dry_run: bool = False,
@@ -309,10 +334,11 @@ def run_pipeline(
         success = deliver(config.get("delivery", {}), title, body, tags)
 
     if not dry_run:
-        included_ids = {item.get("id") for item in scored_items}
-        included, excluded = [], []
-        for item in new_items:
-            (included if item["id"] in included_ids else excluded).append(item)
+        included, excluded = _partition_for_mark_seen(
+            new_items,
+            scored_ids={item.get("id") for item in scored_items},
+            unscored_ids=set(scored_result.get("unscored_ids", [])),
+        )
         mark_seen_batch(db_conn, included, included=True)
         mark_seen_batch(db_conn, excluded, included=False)
 
