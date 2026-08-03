@@ -32,6 +32,33 @@ _OUTPUT_TOKENS_BASE = 512
 _OUTPUT_TOKENS_PER_ITEM = 80
 _OUTPUT_TOKENS_CAP = 16000
 
+# Same defect the scorer hit (see scorer.RESPONSE_SCHEMA): Claude sometimes ends
+# a response one closing brace short of valid JSON, with stop_reason "end_turn"
+# and nothing truncated. json.loads then rejects the whole map and this pass
+# falls back to per-chunk cluster_ids — which is safe but not free, because
+# score_items trims to max_items BEFORE clusterer.py runs, so an unmerged
+# duplicate both shows the story twice and costs a distinct story its slot.
+# Constrain the response so the API guarantees the shape.
+CLUSTER_MAP_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "cluster_id": {"type": "string"},
+                },
+                "required": ["id", "cluster_id"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["items"],
+    "additionalProperties": False,
+}
+
 
 def _output_budget(n_items: int) -> int:
     """max_tokens for the reconcile call, scaled to how many items we echo back."""
@@ -91,6 +118,9 @@ def reconcile_cluster_ids(client, model: str, scored_items: list[dict]) -> list[
             model=model,
             max_tokens=max_tokens,
             thinking={"type": "disabled"},
+            output_config={
+                "format": {"type": "json_schema", "schema": CLUSTER_MAP_SCHEMA}
+            },
             system=[
                 {
                     "type": "text",
