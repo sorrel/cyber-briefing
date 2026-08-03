@@ -258,13 +258,6 @@ sources:
       source_name: "ICO"
       check_interval_hours: 168  # weekly
 
-    commons_library:
-      enabled: true
-      url: "https://commonslibrary.parliament.uk/research-briefings/cbp-9821/"
-      category: policy
-      source_name: "Commons Library"
-      check_interval_hours: 168  # weekly
-
     tldr_infosec:
       enabled: true
       source_name: "TLDR Infosec"
@@ -285,6 +278,13 @@ sources:
       source_name: "This Week in Security"
       check_interval_hours: 168  # weekly (Sunday editions)
 
+    anthropic_red:
+      enabled: true
+      url: "https://red.anthropic.com/"
+      category: research
+      source_name: "Anthropic Red Team"
+      check_interval_hours: 24
+
   # ---------------------------------------------------------------------------
   # PENDING SOURCES — not yet added, awaiting RSS access or verification
   # ---------------------------------------------------------------------------
@@ -297,18 +297,12 @@ sources:
   #   periodically — Substack has historically restored RSS access.
   #   When it works: add under rss_feeds with category: research, source_name: "NCSC CTO"
   #
-  # Anthropic Security Blog / News
-  #   No RSS feed exists as of April 2026 — all standard feed URLs return 404.
-  #   Anthropic model releases and safety research will surface via secondary
-  #   sources already in config (The Hacker News, BleepingComputer, The Register).
-  #   Check https://www.anthropic.com/news periodically for a feed.
-    anthropic_red:
-      enabled: true
-      url: "https://red.anthropic.com/"
-      category: research
-      source_name: "Anthropic Red Team"
-      check_interval_hours: 24
-
+  # Commons Library cyber research briefings
+  #   https://commonslibrary.parliament.uk/research-briefings/cbp-9821/
+  #   UK parliamentary research on cyber policy, weekly-ish cadence.
+  #   NEEDS: a scraper module plus an entry in briefing._SCRAPER_REGISTRY — a
+  #   config block alone never runs. (It sat here as dead config until Aug 2026.)
+  #
   # Anthropic main blog
   #   https://www.anthropic.com/blog/rss (verify URL — may need checking)
   #   Publishes responsible disclosure, model card updates, safety research.
