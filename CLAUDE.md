@@ -2,99 +2,80 @@
 
 ## What this is
 
-A Python pipeline that runs daily to produce a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel (configurable). It gathers from 17+ sources (APIs, RSS feeds, scrapers), scores each item using Claude, and formats a tiered markdown document.
-
-## Deployment environment
-
-The tool runs from a git clone, scheduled by macOS launchd. Everything committed is generic; anything specific to a host — delivery method, scoring model, Slack channel, launchd schedule + paths — lives in files that are **gitignored** and copied from committed `*.example` templates:
-
-- `config.local.yaml` (from `config.local.yaml.example`) — deep-merged over `config.yaml`; sets `delivery.method`, `scoring.model`, `delivery.slack.channel`.
-- `com.cyberbriefing.*.plist` (from `com.cyberbriefing.*.plist.example`) — the launchd agents; fill in the `__PROJECT_DIR__` / `__USER__` placeholders.
-
-This keeps the repo forkable — nothing about any particular host lives in git.
-
-Two scheduling archetypes ship as templates; pick whichever matches the host:
-
-- **Always-on desktop** (`com.cyberbriefing.{daily,weekly}.plist.example`) — a Mac left powered on. Early daily fire (06:15, Mon–Fri) plus a `pmset` wake, because an idle always-on Mac drops into a "dark wake" state where DNS fails (see *Recurring 06:00 EBADF bug* below); Sunday weekly at midday. **The always-on / dark-wake / EBADF / `pmset` reasoning in this document applies to this archetype.**
-- **Sleeping laptop** (`com.cyberbriefing.{daily,weekly}.laptop.plist.example`) — a machine that sleeps with the lid closed. Later daily fire (08:40 weekdays), **no `pmset`** (a closed lid can't be woken reliably, so launchd runs the *missed* calendar job on the next wake), Monday weekly. If it delivers to Slack, the secrets manager must be unlocked at run time — a locked 1Password local-env FIFO streams no token. A locked fire no longer hangs: the `.env` load is time-bounded, and a real run whose secrets never arrive fails fast with a `secrets_unavailable` marker so the next fire retries (see *1Password FIFO env-load hang* below).
-
-Before applying any scheduling/network reasoning, note which archetype you mean: the always-on sections assume the machine never sleeps; the laptop archetype sleeps, roams, and closes its lid.
-
-## Per-machine config (`config.local.yaml`)
-
-`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that key, leaving the rest of the `delivery` block intact). Both `briefing.py` and `weekly_run.py` load config through it. A machine with no local file falls back to the committed defaults. Because `config.yaml` ships only a placeholder Slack channel (`C0XXXXXXXXX`), a machine delivering to Slack must set the real `delivery.slack.channel` in its `config.local.yaml`, or delivery has nowhere to post. A committed `config.local.yaml.example` documents the shape. This lets one clone drive different delivery targets and scoring models on different machines without diverging committed files or branches.
+A Python pipeline that produces a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel. It gathers from 38 live sources (27 RSS feeds, 7 scrapers, 4 APIs), scores each item with Claude, and formats a tiered markdown document.
 
 ## Running it
 
 ```bash
 # Always use uv
-uv run cyberbriefing --dry-run     # Full pipeline → stdout (no state changes)
-uv run cyberbriefing --gather-only # Collect only, mark seen, no scoring
-uv run cyberbriefing --stats       # Show DB stats by source
-uv run cyberbriefing               # Real run → Bear or Slack (per delivery.method)
+uv run cyberbriefing --dry-run              # Full pipeline → stdout (no state changes)
+uv run cyberbriefing --gather-only          # Collect + mark seen, no scoring or delivery
+uv run cyberbriefing --stats                # DB stats by source
+uv run cyberbriefing --clear-source tldrsec # Reset seen-state for one source
+uv run cyberbriefing                        # Real run → Bear or Slack (per delivery.method)
+uv run pytest -q                            # 157 tests, ~2s
 ```
 
-**Dependency management is uv-only.** The manifest is `pyproject.toml` + `uv.lock`;
-upgrade with `uv lock --upgrade` and `uv sync`. There is deliberately **no
-`requirements.txt`** — do not add one, and don't reintroduce a pip fallback.
-It's listed in `.gitignore` to keep it from creeping back. The Python version is
-pinned in `.python-version`. Dependabot tracks the `uv` ecosystem, not pip.
+**Dependency management is uv-only.** The manifest is `pyproject.toml` + `uv.lock`; upgrade with `uv lock --upgrade` and `uv sync`. There is deliberately **no `requirements.txt`** — do not add one, and don't reintroduce a pip fallback (it's in `.gitignore` to keep it from creeping back). Python version is pinned in `.python-version`. Dependabot tracks the `uv` ecosystem, not pip.
 
 ## Architecture
 
 ```
 src/cyberbriefing/     ← the importable package (src layout); imports are cyberbriefing.*
-  briefing.py          ← Daily entry point (console script: cyberbriefing)
+  briefing.py          ← Daily entry point (console script: cyberbriefing); holds _SCRAPER_REGISTRY
   weekly_run.py        ← Weekly entry point (console script: cyberbriefing-weekly)
-  config_loader.py     ← Loads config.yaml, deep-merges config.local.yaml over it
+  config_loader.py     ← load_config (config.yaml + config.local.yaml), load_env_with_timeout, arm_runtime_watchdog
   prioritiser/
     prompt.txt          ← Claude scoring rubric (edit me to tune output)
-    scorer.py           ← Claude API call; scores items in 50-item chunks, returns scored JSON
+    scorer.py           ← Claude API call; 50-item chunks, JSON-schema-constrained response
     claude_response.py  ← Shared: extract JSON from a Claude response; raises TruncatedResponse at max_tokens
     deduplicator.py     ← Cross-chunk cluster-id reconciliation (one extra Claude call over all scored items)
     dedup_prompt.txt    ← Prompt for the reconciliation pass
     clusterer.py        ← Merges items sharing a cluster_id (highest score wins)
   collectors/
+    base.py            ← host_matches() — domain-boundary URL check (not substring matching)
     rss.py             ← Generic RSS/Atom for all feed sources
     cisa_kev.py        ← CISA Known Exploited Vulnerabilities catalogue
     nvd.py             ← NVD CVE API (CVSS ≥ 7.0 filter)
     hackerone.py       ← HackerOne Hacktivity (requires auth)
     github_advisories.py ← GitHub GraphQL advisories
-    enisa_scraper.py   ← ENISA publications scraper (24h interval)
-    ico_scraper.py     ← ICO enforcement actions scraper (weekly)
+    enisa_scraper.py   ← ENISA publications
+    ico_scraper.py     ← ICO enforcement actions
+    tldr_scraper.py    ← TLDR Infosec newsletter
+    cloudseclist_scraper.py ← CloudSecList issues
+    aikido_scraper.py  ← Aikido Security blog
+    twis_scraper.py    ← This Week in Security
+    anthropic_red_scraper.py ← Anthropic Red Team
   delivery/
-    formatter.py       ← Converts scored items → markdown (title, body, tags)
-    dispatch.py        ← Routes (title, body, tags) to the configured delivery.method; always writes the markdown backup
-    bear.py            ← Bear Notes via x-callback-url (Bear-only; backup lives in dispatch/backup now)
-    slack.py           ← Slack chat.postMessage delivery (native message + threaded overflow)
+    formatter.py       ← Converts scored items → markdown (title, body, tags); _pretty_source() slug map
+    dispatch.py        ← Routes (title, body, tags) to delivery.method; always writes the markdown backup
+    bear.py            ← Bear Notes via x-callback-url
+    slack.py           ← Slack chat.postMessage (native message + threaded overflow)
     slack_format.py    ← Converts briefing markdown → Slack Block Kit groups
-    backup.py          ← Always-on markdown backup to ~/cyberbriefing-output/ (read by the weekly pipeline)
+    backup.py          ← Markdown backup to ~/cyberbriefing-output/, 10-day retention (read by the weekly pipeline)
   db/
-    state.py           ← SQLite at ~/.cyberbriefing/state.db; tracks seen items + scraper schedules
-  weekly/              ← Weekly-summary package (reader, summariser, formatter, prompt.txt) — see Weekly summary
-config.yaml            ← All source URLs, scoring weights, thresholds (edit me) — repo root, NOT in the package
-config.local.yaml      ← Per-machine overrides, gitignored (copied from config.local.yaml.example) — repo root
+    state.py           ← SQLite at ~/.cyberbriefing/state.db
+  weekly/              ← Weekly-summary package (reader, summariser, formatter, prompt.txt)
+config.yaml            ← Source URLs, scoring weights, thresholds (edit me) — repo root, NOT in the package
+config.local.yaml      ← Per-machine overrides, gitignored — repo root
+install_launchd.sh     ← Generates the real plists from templates and bootstraps them
+healthcheck.sh         ← Pre-flight check of every condition that has broken a morning fire
 tests/                 ← Test suite — repo root
 ```
 
-> **Paths in this document are package-relative.** All source lives under
-> `src/cyberbriefing/`; elsewhere a name like `delivery/dispatch.py` means
-> `src/cyberbriefing/delivery/dispatch.py`, and `config_loader.py` means
-> `src/cyberbriefing/config_loader.py`. `config.yaml`, `config.local.yaml`,
-> `.env` and `tests/` stay at the repo root — `config_loader.py` resolves the
-> config files there via `Path(__file__).parents[2]`.
+> **Paths in this document are package-relative.** A name like `delivery/dispatch.py` means `src/cyberbriefing/delivery/dispatch.py`. `config.yaml`, `config.local.yaml`, `.env` and `tests/` stay at the repo root — `config_loader.py` resolves the config files there via `Path(__file__).parents[2]`.
 
 ## Pipeline flow
 
-1. **Gather**: All enabled collectors run; items filtered against state.db (dedup)
-2. **Score**: Up to `max_score_input` (150) most-recent unseen items go to Claude in **50-item chunks** — independent calls, with the system prompt cached across them. Each chunk returns scored items, each tagged with a `cluster_id`.
-3. **Reconcile clusters** (only when >1 chunk): because chunks are scored independently, the same story appearing in two chunks gets two different `cluster_id` slugs that `clusterer.py` can't merge. `deduplicator.reconcile_cluster_ids` makes one extra Claude call over *all* scored items to assign canonical `cluster_id`s across the whole set. It's strictly best-effort — any failure (API error, bad JSON, or a `max_tokens` truncation, now detected explicitly and logged) leaves the per-chunk ids untouched and never breaks or empties the briefing. Its output-token budget scales with the item count (see `deduplicator._output_budget`).
-4. **Cluster**: Items sharing a `cluster_id` are collapsed (highest score wins)
-5. **Format**: Tiered markdown — Critical / Notable / Radar / Britain
-6. **Deliver**: via `delivery.method` — Bear Notes or Slack (real run) or stdout (--dry-run); a markdown backup is always written
-7. **Mark seen**: All gathered items written to state.db
+1. **Gather**: APIs, then RSS feeds (8 threads), then interval-gated scrapers; items filtered against `state.db`. Failures are per-source and logged, never fatal.
+2. **Score**: up to `max_score_input` (150) most-recent unseen items go to Claude in **50-item chunks** — independent calls, system prompt cached across them. Each chunk returns scored items tagged with a `cluster_id`. The response is constrained by `output_config.format` JSON schema (`scorer.RESPONSE_SCHEMA`), not by asking the prompt nicely — before that, a single missing closing brace could discard a whole chunk. Note the schema subset: every object needs `required` + `additionalProperties: false`, and numeric bounds are unsupported, so the 1–5 range lives in `prompt.txt`.
+3. **Reconcile clusters** (only when >1 chunk): chunks are scored independently, so the same story in two chunks gets two `cluster_id` slugs `clusterer.py` can't merge. `deduplicator.reconcile_cluster_ids` makes one extra schema-constrained Claude call over *all* scored items to assign canonical ids. Strictly best-effort — any failure (API error, bad JSON, `max_tokens` truncation) leaves the per-chunk ids untouched and never empties the briefing. Output budget scales with item count (`deduplicator._output_budget`).
+4. **Cluster**: items sharing a `cluster_id` are collapsed (highest score wins).
+5. **Format**: Vulnerabilities (capped at `max_vuln_items`) leads, then Critical / Notable / Radar / Britain.
+6. **Deliver**: via `delivery.method` — Bear or Slack (real run) or stdout (`--dry-run`); a markdown backup is always written except for `stdout`.
+7. **Mark seen**: all gathered items written to `state.db` — **unless every chunk failed end-to-end** (`scoring_failed`, typically HTTP 529 across all retries). Then items are deliberately left unseen so the fallback fire retries the same set rather than only the trickle that arrived since; past 07:00 the failure is escalated to the delivery target instead of failing silently.
 
-## Tiers
+## Tiers and scoring
 
 | Tier | Composite score | Render style |
 |------|----------------|--------------|
@@ -104,230 +85,133 @@ tests/                 ← Test suite — repo root
 | Britain | < 10 but geographic ≥ 4 | Headline-only bullet list |
 | Excluded | < 10, not UK/EU | Not shown |
 
-## Composite score formula
+`composite = (geographic × 1.0) + (domain × 1.5) + (actionability × 1.2) + (novelty × 0.8)`, max 23.5. Geographic scores up to 6 (UK-specific items get an extra point); the other three are 1–5. Weights are tuned for UK-based appsec work.
 
-`(geographic × 1.0) + (domain × 1.5) + (actionability × 1.2) + (novelty × 0.8)`
+**The Register** has nuanced guidance in `prompt.txt`: genuine appsec findings or UK breaches score normally; opinion/commentary gets low actionability and usually lands in Britain; stories already covered by a more technical source cluster under that primary; unique UK context nobody else covers gets promoted.
 
-Max: 23.5. Geographic scores up to 6 (UK-specific items get an extra point over the other tiers); the other three dimensions are 1–5. Weights tuned for UK-based appsec work.
+## Configuration
 
-## Adding or removing sources
+`config_loader.load_config()` reads `config.yaml` and deep-merges an optional, gitignored `config.local.yaml` over it (a nested override like `delivery.method` replaces just that leaf, leaving the rest of the `delivery` block intact). Both entry points load config this way; a machine with no local file uses the committed defaults. Everything host-specific — delivery method, scoring model, real Slack channel, launchd paths/schedule — lives in gitignored files copied from committed `*.example` templates, so the repo stays forkable.
 
-Edit `config.yaml`:
-- **RSS feeds**: add under `sources.rss_feeds` with `url`, `category`, `source_name`
-- **Scrapers**: add under `sources.scrapers` with `check_interval_hours`
-- **APIs**: each has its own collector module
-- Add the source slug → display name mapping in `delivery/formatter.py` `_pretty_source()`
+`config.yaml` ships only a placeholder Slack channel (`C0XXXXXXXXX`), so a machine delivering to Slack **must** set the real `delivery.slack.channel` in `config.local.yaml`.
 
-## Key tuning levers
+### Adding or removing sources
+
+- **RSS feeds**: add under `sources.rss_feeds` with `url`, `category`, `source_name`. Note there is **no `enabled` flag for RSS** — every entry is fetched; remove or comment out an entry to drop it.
+- **Scrapers**: add under `sources.scrapers` with `check_interval_hours`, *and* register the module in `briefing._SCRAPER_REGISTRY` — a config entry with no registry entry never runs, however complete it looks.
+- **APIs**: each has its own collector module and an `enabled` flag under `sources.<name>`.
+- Add the source slug → display name mapping in `delivery/formatter.py` `_pretty_source()`.
+
+### Key tuning levers
 
 | What | Where |
 |------|-------|
 | Scoring weights | `config.yaml` → `scoring.weights` |
 | Score thresholds (tiers) | `config.yaml` → `scoring.threshold` + `prompt.txt` tier definitions |
+| Always-include floor | `config.yaml` → `scoring.high_score_floor` (18; items at or above always survive the `max_items` cut) |
 | Max items in briefing | `config.yaml` → `scoring.max_items` |
-| Max items in the Vulnerabilities section | `config.yaml` → `scoring.max_vuln_items` (default 3; highest-scoring kept, the rest dropped) |
+| Max items in the Vulnerabilities section | `config.yaml` → `scoring.max_vuln_items` (3; highest-scoring kept) |
 | Max items sent to Claude | `config.yaml` → `scoring.max_score_input` |
 | Scoring rubric / source guidance | `prioritiser/prompt.txt` |
 | Section headers / render style | `delivery/formatter.py` |
-| Delivery target (bear / slack / stdout / markdown_file) | `config.yaml` → `delivery.method` (+ `delivery.slack.channel` for Slack); per-machine override in `config.local.yaml` |
+| Scoring model | `config.yaml` → `scoring.model` (per-machine override in `config.local.yaml`) |
+| Delivery target (bear / slack / stdout / markdown_file) | `config.yaml` → `delivery.method` (+ `delivery.slack.channel`) |
+
+## Delivery
+
+Both pipelines route through `delivery/dispatch.py`.
+
+- **Backup invariant:** `dispatch.py` always writes the `~/cyberbriefing-output/` markdown backup for every method except `stdout`, because `weekly/reader.py` reads those backups. Bear/Slack posting is best-effort; **the backup is the durable artifact and the success signal.** Retention is 10 days (not 7) so a slightly-late run or a DST shift never prunes Monday's file before Sunday reads it.
+- **Bear:** `open bear://x-callback-url/...` returns exit 0 the moment macOS accepts the URL handoff — there is no signal that Bear consumed it, so Bear delivery can never be confirmed client-side. When `pgrep` says Bear isn't running, `_launch_bear_and_wait()` does `open -ga Bear` and polls until Bear has been alive ≥2s (cap 15s) to clear the cold-launch race. **Bear has no AppleScript interface** (no `.sdef`, `sdef /Applications/Bear.app` → error -192) — don't reintroduce a `tell application "Bear"` fallback; it never worked.
+- **Slack:** `SLACK_BOT_TOKEN` in env; only the `chat:write` scope, and the bot must be invited to the channel. `slack_format.py` remaps emphasis — Slack's `*bold*`/`_italic_` is the inverse of our markdown's `*italic*`. Long briefings overflow into threaded replies under the parent message.
 
 ## Scheduling
 
-> This section uses the **always-on desktop** templates (`com.cyberbriefing.*.plist`). The **sleeping-laptop** templates (`com.cyberbriefing.*.laptop.plist`) differ only in schedule (08:40 weekdays, `Weekday` 1–5; Monday 10:00 weekly) and drop the `pmset` wake — a closed lid can't be woken, so launchd fires the missed calendar job on the next wake. Install them the same way, substituting the `.laptop.plist` filenames. Everything else (Aqua/Interactive/`caffeinate`/idempotency) is identical.
+Cron-style launchd: a fresh process per calendar slot, no long-running daemon. Each archetype schedules a primary fire plus a later idempotent fallback — `was_delivered_today()` makes the fallback a free no-op on good days and the only thing that runs on bad ones. Two archetypes ship as templates; **state which one you mean before applying any scheduling or network reasoning:**
 
-Cron-style launchd: a fresh `cyberbriefing` process is spawned at each calendar slot. The schedule runs **Monday–Friday only** (`Weekday` 1–5 on every slot); Saturday and Sunday are deliberately omitted — the weekend has no daily briefing, and the weekly summary runs on Sunday. Two slots per day:
+| Archetype | Templates | Schedule | pmset wake |
+|-----------|-----------|----------|------------|
+| Always-on desktop | `com.cyberbriefing.{daily,weekly}.plist.example` | Daily 06:15 + 07:30 fallback (Mon–Fri); weekly Sun 12:00 + 13:30 | Yes — required, see below |
+| Sleeping laptop | `com.cyberbriefing.{daily,weekly}.laptop.plist.example` | Daily 08:40 (Mon–Fri); weekly Mon 10:00 | No — a closed lid can't be woken; launchd runs the missed job on next wake |
 
-- **06:15** — primary fire.
-- **07:30** — idempotent fallback. The `cyberbriefing` run checks `state.db` (`was_delivered_today()`) and exits cleanly if today's briefing has already been delivered, so this is a no-op on good days and the only thing that runs on bad days.
-
-The plist is hardened for correct user GUI context — this is what the previous long-running daemon got wrong:
-
-- `LimitLoadToSessionType = Aqua` — only loads in the user GUI session, where `mDNSResponder` mach ports are usable.
-- `ProcessType = Interactive` — full scheduling priority; not background-throttled.
-- `RunAtLoad = false` — fires only on schedule.
-- Wrapped in `caffeinate -is` — keeps the system out of any idle/sleep transition during the run.
-
-The plist also requires the system to be in a real wake state at the schedule time. Even on an always-on Mac, macOS keeps the user session in a degraded "dark wake" overnight that breaks `getaddrinfo` with EBADF (see the *Recurring 06:00 EBADF bug — actual fix (9 May 2026)* section). A `pmset repeat` schedules a real user-session wake at 06:10, five minutes before the primary fire.
+Both plists are hardened for correct user GUI context, which is load-bearing for DNS (see *Operational constraints* below): `LimitLoadToSessionType = Aqua`, `ProcessType = Interactive`, `RunAtLoad = false`, wrapped in `caffeinate -is`.
 
 ```bash
-# First time only: the real com.cyberbriefing.daily.plist is gitignored, so
-# create it from the committed template and fill in __PROJECT_DIR__ / __USER__.
-# (Skip if you already have the real plist on this machine.)
-cp com.cyberbriefing.daily.plist.example com.cyberbriefing.daily.plist
-# ...then edit the two placeholders in the copy.
+./install_launchd.sh              # both agents, always-on desktop archetype
+./install_launchd.sh --laptop     # sleeping-laptop archetype
+./install_launchd.sh --daily      # one agent only
+./healthcheck.sh                  # pre-flight: plist context, pmset, secrets, recent output
 
-# One-time: schedule a real daily wake five minutes before the primary fire
-# (Mon–Fri, matching the daily schedule; the Sunday weekly runs at noon and
-# needs no early wake).
-sudo pmset repeat wakeorpoweron MTWRF 06:10:00
-# Verify
-pmset -g sched
+# Always-on desktop only: a real user-session wake before the primary fire
+sudo pmset repeat wakeorpoweron MTWRF 06:10:00   # verify: pmset -g sched
 
-# Install (or re-install after plist edits)
-launchctl bootout gui/$(id -u)/com.cyberbriefing.daily 2>/dev/null
-cp com.cyberbriefing.daily.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cyberbriefing.daily.plist
-
-# Manual fire (e.g. for testing)
-launchctl kickstart -k gui/$(id -u)/com.cyberbriefing.daily
-
-# Inspect context (confirm Aqua / Interactive)
-launchctl print gui/$(id -u)/com.cyberbriefing.daily
-
-# Logs
-tail -f /tmp/cyberbriefing.log
-tail -f /tmp/cyberbriefing.err
+launchctl kickstart -k gui/$(id -u)/com.cyberbriefing.daily   # manual fire
+launchctl print gui/$(id -u)/com.cyberbriefing.daily          # confirm Aqua / interactive (4)
+tail -f /tmp/cyberbriefing.log /tmp/cyberbriefing.err
 ```
+
+The install script generates the real (gitignored) plists from the templates by filling in `__PROJECT_DIR__` / `__USER__`, backs up any existing plist, and uses `bootout`/`bootstrap` rather than the deprecated `launchctl load` — only that pair reliably yields the interactive (4) spawn type.
 
 ## Weekly summary 🗓️
 
-A companion pipeline that runs **Sunday 12:00** (13:30 idempotent fallback) and rolls the week's daily briefings into one weekly summary — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories. (Backup retention was raised 7 → 10 days so Sunday always sees the full week.) The sleeping-laptop archetype runs this **Monday 10:00** instead; `weekly/reader.py: select_week_files` targets the **most recently completed Mon→Sun week**, so both a Sunday run and a Monday run summarise the week that just ended — not the empty week starting today.
+Rolls the week's daily briefings into one summary — `Weekly Cyber Summary — <Mon> to <Sun>`, tag `security/briefing/weekly`. It reads the daily markdown backups in `~/cyberbriefing-output/`, drops the Vulnerabilities (CVE) section, and asks Claude to dedupe/rank/summarise — biased towards blogs, tools and new techniques — into the top ~8–12 stories.
+
+`weekly/reader.py: select_week_files` always targets the **most recently completed Mon→Sun week**, so a Sunday run and a Monday run summarise the same (just-ended) week, not the empty week starting today.
 
 ```bash
 uv run cyberbriefing-weekly --dry-run   # → stdout, no state changes
 uv run cyberbriefing-weekly             # → Bear or Slack (per delivery.method)
 ```
 
-- **Code:** `weekly_run.py` + the `weekly/` package (`reader.py`, `summariser.py`, `prompt.txt`, `formatter.py`); reuses `delivery/bear.py` and `db/state.py`.
-- **Scheduling:** `com.cyberbriefing.weekly.plist` — same Aqua/Interactive/`caffeinate` hardening as the daily, no `pmset` needed at midday. Install/inspect like the daily plist (label `com.cyberbriefing.weekly`); logs at `/tmp/cyberbriefing-weekly.{log,err}`.
-- **Failure:** empty week or Claude failure → `FAILURE-weekly-<date>.md` + non-zero exit; the 13:30 fallback retries.
+- **Code:** `weekly_run.py` + the `weekly/` package; reuses `delivery/dispatch.py` and `db/state.py`. Idempotency via `was_weekly_delivered_this_week()`.
+- **Logs:** `/tmp/cyberbriefing-weekly.{log,err}`.
+- **Failure:** empty week or Claude failure → `FAILURE-weekly-<date>.md` + non-zero exit; the fallback slot retries.
 
-## Slack delivery
+## Operational constraints (learned the hard way)
 
-Set `delivery.method: slack` to deliver to a Slack channel instead of Bear —
-typically in a machine's gitignored `config.local.yaml` (see *Per-machine
-config* above), so the shared `config.yaml` default is untouched. Applies to
-both the daily (`briefing.py`) and weekly (`weekly_run.py`) pipelines, which
-both route through `delivery/dispatch.py`.
+Four failure modes cost real debugging time. The fixes are in the code; the reasoning is here so it isn't re-derived or undone.
 
-- **Auth:** `SLACK_BOT_TOKEN` (env, via the 1Password local env file). Only
-  the `chat:write` bot scope is needed; the bot must be invited to the channel.
-- **Channel:** `delivery.slack.channel` — a channel ID set in `config.local.yaml`
-  (`config.yaml` ships only a placeholder); never hardcoded in Python.
-- **Rendering:** `delivery/slack_format.py` converts the briefing markdown to
-  Slack Block Kit — note Slack's `*bold*` / `_italic_` is the inverse of our
-  markdown's `*italic*`, which the converter remaps. Long briefings overflow
-  into threaded replies under the parent message.
-- **Backup invariant:** `delivery/dispatch.py` always writes the
-  `~/cyberbriefing-output/` markdown backup for every method except `stdout`,
-  because `weekly/reader.py` reads those backups. Bear/Slack posting is
-  best-effort; the backup is the durable artifact and the success signal.
-- **Secrets caveat:** the 1Password local env file prompts for authorization
-  on first read after 1Password *locks*, and its FIFO does not support
-  concurrent readers. For the unattended launchd fires to obtain the token,
-  1Password must stay unlocked. The daily and weekly fire windows do not
-  overlap, so the single-reader limit is not a concern.
+**1. Dark-wake DNS (EBADF).** On an always-on Mac, macOS holds the user session in a reduced "dark wake" overnight; `mDNSResponder`'s mach port is gated, and `getaddrinfo` returns `OSError: [Errno 9] Bad file descriptor` on every lookup — every collector fails. Two things are required together: the Aqua/Interactive plist context (a daemon-style spawn has no usable resolver port at all), **and** a `pmset repeat` wake a few minutes before the fire. `caffeinate -is` only blocks *new* sleep transitions during the run; it cannot restore a session already degraded at start. Ruled out and not worth re-exploring: DNS cache flush, `mDNSResponder` HUP, forcing `AF_INET`, respawning for fresh FDs, longer post-restart probe windows.
 
-## Bear delivery bug — investigation and fix (30 April 2026)
+**2. All-sources-failed alarm.** `gather_all()` returns `(new_items, total_gathered)`. A healthy run gathers hundreds, so `total_gathered == 0` means a network-layer block, not a quiet news day. `run_pipeline()` writes `FAILURE-<YYYY-MM-DD>.md` to `~/cyberbriefing-output/` and exits non-zero so launchd records it — otherwise a blocked morning is indistinguishable from a slow one.
 
-**Symptom:** Briefing pipeline ran cleanly at 06:04, logs said "Delivered to Bear via x-callback-url", but the note did not appear until the Mac was next opened later that morning.
+**3. Env-load hang.** A `.env` supplied as a 1Password local-env FIFO blocks in `open()` until 1Password attaches a writer. With 1Password locked at an unattended fire that blocked *forever* — no exception, no logs, no backup, slot held for an hour. `config_loader.load_env_with_timeout()` bounds each load with `SIGALRM` (EINTR, no leaked fd, so the single-reader FIFO stays retryable) and retries `30s × 2`; a plain regular-file `.env` returns instantly and is unaffected. The call lives in `main()` **after logging is configured**, not at import time — keep it there, or failures go invisible again and the test suite inherits the FIFO's behaviour.
 
-**Root cause:** `open bear://x-callback-url/create?...` returns exit code 0 as soon as macOS dispatches the URL — before Bear processes it. When Bear is not already running, `open` cold-launches it. If the screen is locked or the user is away, Bear may not properly handle the callback during startup (URL dropped or silently queued). The code treated `open` exit 0 as confirmed delivery, so no fallback was triggered. Confirmed by `ps -eo lstart,command | grep Bear`: Bear process started at exactly 06:04:27, the same instant as the `open` call.
+**4. Whole-process watchdog.** `config_loader.arm_runtime_watchdog()` — a daemon-thread 15-minute process timeout armed at the top of `main()` in both entry points, so any future hang can't hold a launchd slot. A thread, not `SIGALRM`, so it never collides with (3). Caveat: the Anthropic client's 600s read timeout plus a half-size retry means a badly degraded API could approach 15 min and be killed mid-run — the fallback fire then retries.
 
-**Fixes applied (30 April 2026, Claude claude-sonnet-4-6):**
-
-1. **Bear running pre-check** (`delivery/bear.py`): `deliver_to_bear()` now calls `pgrep -x Bear` before attempting x-callback-url. If Bear is not running, it skips x-callback-url entirely and goes straight to AppleScript. `tell application "Bear"` launches the app *and blocks until it is ready*, eliminating the timing race.
-
-2. **Always-on markdown backup** (`delivery/bear.py`): After any successful Bear delivery (x-callback-url or AppleScript), `_write_markdown_file()` is also called. A dated `.md` file is always written to `~/cyberbriefing-output/`, so the briefing is never silently lost even if Bear fails.
-
-## Bear AppleScript fallback removed (16 May 2026)
-
-**Symptom:** 16 May 2026 morning briefing ran cleanly at 06:17 (markdown backup written, `state.db` marked delivered) but no note appeared in Bear. Mac had rebooted around 07:44 — almost certainly a macOS update install — and Bear had shut down with it. At 06:17, Bear briefly looked alive (`pgrep` returned true) so `open bear://...` was attempted; the OS handed the URL off (exit 0) but Bear dropped it during shutdown.
-
-**Investigation finding (worth keeping):** Bear 2.8.1 has **no AppleScript scripting interface at all** — no `.sdef` file, no `OSAScriptingDefinition` in `Info.plist`, and `sdef /Applications/Bear.app` returns error -192. The `_deliver_via_applescript()` path with `tell application "Bear" to create note with text …` has therefore never worked; what saved every "Bear closed" morning was the markdown backup, not AppleScript. Verified directly: even from an interactive shell, `osascript -e 'tell application "Bear" to create note with text "x"'` errors with `-2740`.
-
-**Fixes applied (16 May 2026, Claude claude-opus-4-7):**
-
-1. **Deleted the AppleScript branch** from `delivery/bear.py`. It was dead code.
-2. **Real cold-launch path for Bear:** when `pgrep` says Bear is not running, `_launch_bear_and_wait()` calls `open -ga Bear` and then polls `pgrep` until Bear has been alive for ≥2 seconds (capped at 15 s total), which clears the cold-launch URL race that motivated the original 30 April fix.
-3. **Honest return value:** `deliver_to_bear()` no longer claims Bear delivery succeeded when only the markdown backup landed. The return value now reflects whether *anything* (Bear note or markdown) was preserved — markdown is enough on its own, and the 06:15 / 07:30 launchd pair already gives Bear a second attempt on bad mornings.
-
-**What remains undetectable:** today's exact failure mode — Bear briefly alive then terminating mid-callback — cannot be caught client-side. `open` returns 0 the moment the OS accepts the URL handoff; we have no signal that Bear actually consumed it. The markdown backup in `~/cyberbriefing-output/` is the answer here, and on a normal day the user can just open that file directly.
-
-## Recurring 06:00 EBADF bug — diagnosis and partial fix (4 May 2026, superseded 9 May — see next section)
-
-**Symptom:** roughly half of mornings, `socket.getaddrinfo` / `socket.create_connection` returned `OSError: [Errno 9] Bad file descriptor`. Every collector failed; no briefing delivered. Other times of day were fine.
-
-**Earlier wrong diagnoses (recorded so we don't re-explore them):**
-
-- *Stale DNS:* added `dscacheutil` flush + `mDNSResponder` HUP. No effect.
-- *IPv6 timing:* forced `AF_INET`. No effect.
-- *Stale process FDs (3 May 2026):* `sys.exit(0)` to make launchd respawn with fresh FDs. Flag-file mechanism worked, but the fresh process **also** got EBADF — which ruled out our process state.
-- *Post-restart window too short:* extended probe to 10 min. Same result, superseded same day.
-- *"The probe is the bug" (4 May, morning):* assumed the probe was a false positive and removed it. This was wrong too — removing the probe just means the collectors hit the same EBADF instead.
-
-**Actual root cause:** the launchd agent was being spawned in the **wrong macOS user context**. `launchctl print` showed `spawn type = daemon (3)` and a stripped `inherited environment` — i.e., a background daemon-style spawn rather than an Aqua user-GUI spawn. On macOS, `getaddrinfo` uses mach IPC to `mDNSResponder`; if the spawning context doesn't have the right mach-port access (typically because the agent isn't pinned to the Aqua session, the screen is locked, and the user session is in a degraded state), the resolver port comes back with a closed FD → EBADF on every name lookup. Even a launchd-restarted "fresh" process inherits the same bad bootstrap context, which is why restarting didn't help.
-
-**Fix (4 May 2026, evening):**
-
-1. **Rewrote the plist for correct user context** — added `LimitLoadToSessionType = Aqua`, `ProcessType = Interactive`, `RunAtLoad = false`, and wrapped the program in `caffeinate -is`. See the *Scheduling* section above.
-2. **Replaced the long-running daemon with cron-style** `StartCalendarInterval` at 06:15 + 07:30. Each fire is a fresh process in the proper Aqua context. `daemon.py` deleted.
-3. **Added idempotency** — `db.state.was_delivered_today()` / `mark_delivered_today()` (re-using the existing `scraper_runs` table); `briefing.py` exits cleanly at the top of `run_pipeline` if today's briefing is already delivered, so the 07:30 fallback is a free no-op on good days.
-
-The previous Bear-delivery fix (markdown backup, AppleScript fallback) is unchanged. (The AppleScript fallback was later removed on 16 May 2026 — see *Bear AppleScript fallback removed* above. Markdown backup is unchanged.)
-
-## Recurring 06:00 EBADF bug — actual fix (9 May 2026)
-
-The 4 May plist rewrite (Aqua / Interactive / `caffeinate -is`) was necessary but **not sufficient**. On 9 May 2026 both the 06:15 and 07:30 fires hit EBADF on every source, despite `launchctl print` confirming `spawn type = interactive (4)`. Within seconds of the user touching the Mac, the same pipeline ran cleanly with the same launchd setup — proving the launchd-context theory was incomplete.
-
-**Actual root cause:** macOS keeps an always-on Mac in a reduced "dark wake" overnight even though the machine is powered on. In that state, user-session services like `mDNSResponder` are gated; `getaddrinfo` returns EBADF because its mach-port endpoint is not usable. `caffeinate -is` only blocks *new* idle/sleep transitions during the run — it does nothing to restore a session that is already in a degraded state when the script starts.
-
-**Fix (9 May 2026, Claude claude-opus-4-7):**
-
-```bash
-sudo pmset repeat wakeorpoweron MTWRF 06:10:00
-```
-
-A real user-session wake five minutes before the launchd fire. By 06:15 the system is fully active and `getaddrinfo` works. Persists across reboots; cancel with `sudo pmset repeat cancel`; verify with `pmset -g sched`. The 07:30 fallback remains as belt-and-braces in case anything else interferes.
-
-The 4 May plist setup (Aqua, Interactive, caffeinate, cron-style schedule, idempotency) and the 30 April Bear-delivery fix are unchanged — both still required, just not on their own enough.
-
-## 1Password FIFO env-load hang — diagnosis and fix (2 July 2026)
-
-**Symptom:** the 08:40 fire produced no briefing. Unlike a normal miss, the process had *not* exited — `ps` showed the 08:40 `briefing.py` still alive nearly an hour later, at 0% CPU, and `/tmp/cyberbriefing.{log,err}` were both **0 bytes**. Nothing had run, yet nothing had failed.
-
-**Root cause:** secrets are delivered through a 1Password **local-env FIFO** — the `.env` is a named pipe (`prw-------`), not a regular file. `briefing.py` called `load_dotenv(".env")` at **module import time, before logging was configured** (line 23). Opening a FIFO for reading **blocks until a writer attaches**; the writer is 1Password, which needs the read authorised. At an unattended fire 1Password was locked / the auth prompt went unseen, so no writer ever came and `open()` blocked **forever** — no exception, no timeout, nothing to retry. A stack sample confirmed the process parked in a single `__open` syscall under `load_dotenv`. Because this was before logging, the logs were empty; because it was before everything, not even the markdown backup was written. (The earlier note that a locked 1Password "falls back to the markdown backup" was wrong — it hung outright.)
-
-**Fix (2 July 2026, Claude claude-opus-4-8):**
-
-1. **`config_loader.load_env_with_timeout()`** — bounds each `load_dotenv` with `SIGALRM` (interrupts the blocked `open()` via EINTR — no leaked fd, so the single-reader FIFO stays retryable) and retries (`30s × 2`; a fresh open re-triggers the 1Password prompt for a present user). Returns `True` if the load completed (a missing/regular file returns instantly — so a machine reading a plain, non-FIFO `.env` is unaffected), `False` on timeout. The call **moved from import time into `main()`, after logging** — so a future failure is visible in the log, and imports (and the test suite) are no longer at the mercy of the FIFO.
-2. **Fail-fast** — `briefing._secrets_blocked()`: a real delivery run whose env load timed out aborts *before* gather with a new `secrets_unavailable` FAILURE marker (accurate cause, not the misleading "scoring failed / API overloaded"), freeing the launchd slot so the fallback fire + next wake retry. `--stats`/`--gather-only` (no secrets needed) and `--dry-run` are exempt.
-3. **`config_loader.arm_runtime_watchdog()`** — a daemon-thread whole-process timeout (15 min) armed at the top of `main()` in both entry points, so **any** future hang (wedged HTTP, stuck scraper) can't hold a slot for an hour. A thread, not `SIGALRM`, so it never collides with (1). Caveat: the Anthropic client's per-request read timeout is 600s with a half-size retry, so a badly degraded-API scoring run could in theory approach 15 min and be killed mid-run — the fallback fire then retries.
-
-`weekly_run.py` got the same bounded load + watchdog (it had the identical import-time `load_dotenv`). It's all shared code: a machine with an always-unlocked 1Password (or a plain `.env`) never hits the timeout, so behaviour is unchanged on normal days and strictly better on abnormal ones.
-
-## All-sources-failed alarm
-
-`gather_all()` returns `(new_items, total_gathered)`. A healthy run gathers hundreds of items, so `total_gathered == 0` means every collector returned nothing — virtually always a network-layer block (EBADF, Network Extension drop, DNS dead), not a genuine quiet day. When that happens, `run_pipeline()` writes a visible `FAILURE-<YYYY-MM-DD>.md` to `~/cyberbriefing-output/` and exits non-zero so launchd records the failure. Without this, a network-blocked morning was indistinguishable from a quiet news day — silently absent.
+Related fail-fast: `briefing._secrets_blocked()` aborts a real delivery run whose env load timed out *before* gather, writing a `secrets_unavailable` marker (accurate cause, not a misleading "scoring failed"). `--stats`, `--gather-only` and `--dry-run` are exempt.
 
 ## Secrets
 
-Uses a `.env` file (gitignored), sourced via the 1Password local env file
-(values streamed on read; standard `load_dotenv` — no `op run`). Required keys:
-- `ANTHROPIC_API_KEY` — for Claude scoring
-- `HACKERONE_USERNAME` / `HACKERONE_TOKEN` — optional, for HackerOne collector
-- `GITHUB_TOKEN` — optional, for GitHub Advisories collector
-- `SLACK_BOT_TOKEN` — optional, only for `delivery.method: slack` (Slack app bot token, `chat:write` scope)
+A gitignored `.env` at the repo root, loaded via `load_env_with_timeout`. Either a plain file or a 1Password local-env FIFO works — see constraint 3 above for what the FIFO costs. Keys (names as the code reads them):
+
+- `ANTHROPIC_API_KEY` — required, for Claude scoring
+- `HACKERONE_API_USER` / `HACKERONE_API_TOKEN` — optional, HackerOne collector
+- `NVD_API_KEY` — optional, higher NVD rate limits
+- `GITHUB_TOKEN` — optional, GitHub Advisories collector
+- `SLACK_BOT_TOKEN` — optional, only for `delivery.method: slack`
+
+Missing optional keys degrade gracefully: the source is skipped with a warning.
 
 ## State DB
 
 SQLite at `~/.cyberbriefing/state.db`:
-- `seen_items` — every gathered item (id = SHA-256 of URL), tracks `included_in_briefing`
-- `scraper_runs` — last-checked timestamp per scraper source
+- `seen_items` — every gathered item (id = SHA-256 of URL), tracks `included_in_briefing`. Auto-pruned monthly of never-included items older than 180 days (`prune_old_unseen`).
+- `scraper_runs` — last-checked timestamp per scraper; also carries the daily/weekly delivered markers.
+
+## Known gaps
+
+Open ideas, none of them urgent — the pipeline has run without them for months. Listed so they aren't rediscovered as bugs.
+
+- **No retry on collector HTTP calls.** Every collector sets a timeout but makes a single attempt; a transient failure just drops that source for the run. A `requests.Session` with a retry adapter would cover it.
+- **No inter-request sleep in the NVD collector.** Without `NVD_API_KEY` the API allows 5 requests per 30s; `nvd.py` makes 2 (HIGH + CRITICAL) back to back, which is under the limit but has no margin if a third query is ever added.
+- **No per-scraper zero-item warning.** The all-sources-failed alarm catches a total blackout, but a single scraper silently returning nothing after a site redesign looks identical to a quiet week for that source.
+- **No `--log-file` flag.** launchd captures stdout to `/tmp/cyberbriefing.log`; a manual run has to be redirected by hand.
 
 ## Common issues
 
-- **Empty briefing**: run `--stats` to check item counts; run `--gather-only` to reset "seen" state for debugging
-- **Bear not opening / note missing**: a markdown backup is *always* written to `~/cyberbriefing-output/` after every delivery attempt — check there first
-- **`FAILURE-<date>.md` in `~/cyberbriefing-output/`**: every source returned zero items — see *All-sources-failed alarm* above; check `/tmp/cyberbriefing.err` and any Network Extension (TripMode, Little Snitch, VPN)
-- **ENISA/ICO scraper returning zero items**: site may have been redesigned; check the scraper HTML selectors
-
-## Britain section
-
-Items with geographic relevance ≥ 4 (UK/EU) that score below 10 overall are shown as a headline-only bullet list at the bottom of the briefing.
-
-**The Register** is configured with nuanced scoring guidance in `prompt.txt`:
-- Genuine appsec findings or UK breaches → scores normally, can appear in main tiers
-- Opinion/commentary/generic tech news → low actionability (1–2), likely falls into Britain section
-- Stories already covered by a more technical source (BleepingComputer, NCSC, etc.) → clustered under the higher-quality primary, not promoted as a standalone Register item
-- Unique UK context that no other source covers → promoted to main tiers even if from The Register
+- **Empty briefing**: `--stats` for item counts; `--clear-source <slug>` to reset seen-state for one source and make it re-gather.
+- **Bear note missing**: expected on some mornings and undetectable client-side — the markdown backup in `~/cyberbriefing-output/` is always written; open that.
+- **`FAILURE-<date>.md`**: every source returned zero items — see constraint 2; check `/tmp/cyberbriefing.err` and any Network Extension (TripMode, Little Snitch, VPN).
+- **`FAILURE-…-secrets_unavailable`**: the `.env` load timed out — unlock the secrets manager, or check the `.env` is readable.
+- **A scraper returning zero items**: the site was probably redesigned; check that scraper's HTML selectors.
