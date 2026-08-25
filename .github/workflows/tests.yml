@@ -1,0 +1,31 @@
+# Runs the test suite on every push to main and every pull request.
+#
+# The suite is fully mocked — it never calls the Claude API or posts to
+# Slack. Keep it that way: CI runs on every push, so a test that made real
+# calls would spend tokens and notify a channel on every commit.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to full commit SHAs, not tags: a tag is mutable, so "@v7" is
+      # a promise the action's owner can silently rewrite. Dependabot reads
+      # the trailing version comment and keeps both SHA and comment current.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Don't leave the job's token in .git/config for later steps.
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - run: uv sync --dev
+      - run: uv run pytest -q
