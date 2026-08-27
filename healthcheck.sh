@@ -98,11 +98,22 @@ check_agent "$WEEKLY_LABEL" "/tmp/cyberbriefing-weekly.err"
 echo "    (No pmset wake needed — the weekly fires at midday when the Mac is awake.)"
 
 hdr "6. Files & secrets"
-[[ -f "$REPO/.env" ]] && ok ".env present" || bad ".env MISSING in $REPO"
-if [[ -f "$REPO/.env" ]] && grep -q '^ANTHROPIC_API_KEY=' "$REPO/.env"; then
-    ok "ANTHROPIC_API_KEY set in .env"
+# The .env is normally a 1Password local-env file: a FIFO, not a regular file,
+# so `-f` is false and reading it is a ONE-SHOT stream that would both consume
+# the secrets and pop a 1Password approval prompt. Never grep it — test only
+# that the mount is there, and let the run itself prove the values load.
+if [[ -p "$REPO/.env" ]]; then
+    ok ".env present (1Password local-env file mounted)"
+    ok "ANTHROPIC_API_KEY delivered by 1Password (not read here — one-shot FIFO)"
+elif [[ -f "$REPO/.env" ]]; then
+    warn ".env present as a plain file — secrets on disk; mount it from 1Password instead"
+    if grep -q '^ANTHROPIC_API_KEY=' "$REPO/.env"; then
+        ok "ANTHROPIC_API_KEY set in .env"
+    else
+        bad "ANTHROPIC_API_KEY missing from .env"
+    fi
 else
-    bad "ANTHROPIC_API_KEY missing from .env"
+    bad ".env MISSING in $REPO"
 fi
 [[ -f "$STATE_DB" ]] && ok "state.db present" || bad "state.db missing at $STATE_DB"
 [[ -d "$OUTPUT_DIR" ]] && ok "output dir present" || warn "output dir missing — will be created on first run"
