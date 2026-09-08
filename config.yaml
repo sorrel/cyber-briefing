@@ -279,8 +279,11 @@ sources:
       check_interval_hours: 168  # weekly (Sunday editions)
 
     anthropic_red:
+      # The old standalone red.anthropic.com now 301s here, as does the apex
+      # domain; www.anthropic.com is the canonical host. The scraper reads its
+      # own ANTHROPIC_RED_URL constant, so keep the two in step by hand.
       enabled: true
-      url: "https://red.anthropic.com/"
+      url: "https://www.anthropic.com/research/team/frontier-red-team"
       category: research
       source_name: "Anthropic Red Team"
       check_interval_hours: 24
