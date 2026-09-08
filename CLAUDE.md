@@ -13,7 +13,7 @@ uv run cyberbriefing --gather-only          # Collect + mark seen, no scoring or
 uv run cyberbriefing --stats                # DB stats by source
 uv run cyberbriefing --clear-source tldrsec # Reset seen-state for one source
 uv run cyberbriefing                        # Real run → Bear or Slack (per delivery.method)
-uv run pytest -q                            # 157 tests, ~2s
+uv run pytest -q                            # 170 tests, ~2s
 ```
 
 **Dependency management is uv-only.** The manifest is `pyproject.toml` + `uv.lock`; upgrade with `uv lock --upgrade` and `uv sync`. There is deliberately **no `requirements.txt`** — do not add one, and don't reintroduce a pip fallback (it's in `.gitignore` to keep it from creeping back). Python version is pinned in `.python-version`. Dependabot tracks the `uv` ecosystem, not pip.
