@@ -111,13 +111,10 @@ sources:
       category: breach
       source_name: "Risky Business"
 
-    owasp:
-      url: "https://owasp.org/feed.xml"
-      category: research
-      source_name: "OWASP"
-
-    # OWASP project releases come from GitHub — the owasp.org feed above is
-    # only the foundation blog (staffing, events). These fire on actual releases:
+    # OWASP project releases come from GitHub. Foundation news (and some
+    # project announcements) comes from the owasp_news scraper, since
+    # owasp.org/feed.xml has returned 404 since the Next.js rebuild.
+    # These fire on actual releases:
     owasp_top10_releases:
       url: "https://github.com/OWASP/Top10/releases.atom"
       category: research
@@ -286,6 +283,15 @@ sources:
       url: "https://www.anthropic.com/research/team/frontier-red-team"
       category: research
       source_name: "Anthropic Red Team"
+      check_interval_hours: 24
+
+    owasp_news:
+      # No feed exists any more: this reads the JSON API behind owasp.org/news.
+      # The scraper reads its own OWASP_NEWS_API_URL constant.
+      enabled: true
+      url: "https://owasp.org/api/public/news/list?limit=20"
+      category: research
+      source_name: "OWASP"
       check_interval_hours: 24
 
   # ---------------------------------------------------------------------------

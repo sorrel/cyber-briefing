@@ -220,7 +220,7 @@ def _pretty_source(slug: str) -> str:
         "krebs_on_security": "Krebs on Security",
         "bleepingcomputer": "BleepingComputer",
         "risky_business": "Risky Business",
-        "owasp": "OWASP",
+        "owasp_news": "OWASP",
         "owasp_top10_releases": "OWASP Top 10",
         "owasp_api_security_releases": "OWASP API Security",
         "owasp_llm_top10_releases": "OWASP LLM Top 10",
