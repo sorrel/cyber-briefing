@@ -25,7 +25,7 @@ from cyberbriefing import config_loader
 # suite — for an hour. Deferring it to main() keeps imports side-effect-free and
 # lets the bounded loader + logging do their job. See CLAUDE.md (2 Jul 2026).
 from cyberbriefing.collectors import rss, cisa_kev, nvd, hackerone, github_advisories
-from cyberbriefing.collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper, twis_scraper, anthropic_red_scraper
+from cyberbriefing.collectors import enisa_scraper, ico_scraper, tldr_scraper, cloudseclist_scraper, aikido_scraper, twis_scraper, anthropic_red_scraper, owasp_news_scraper
 from cyberbriefing.db.state import (
     get_connection,
     filter_unseen,
@@ -72,6 +72,7 @@ _SCRAPER_REGISTRY = [
     ("aikido",                 aikido_scraper,        23),
     ("this_week_in_security",  twis_scraper,         168),
     ("anthropic_red",          anthropic_red_scraper, 24),
+    ("owasp_news",             owasp_news_scraper,    24),
 ]
 
 

@@ -2,7 +2,7 @@
 
 ## What this is
 
-A Python pipeline that produces a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel. It gathers from 38 live sources (27 RSS feeds, 7 scrapers, 4 APIs), scores each item with Claude, and formats a tiered markdown document.
+A Python pipeline that produces a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel. It gathers from 38 live sources (26 RSS feeds, 8 scrapers, 4 APIs), scores each item with Claude, and formats a tiered markdown document.
 
 ## Running it
 
@@ -13,7 +13,7 @@ uv run cyberbriefing --gather-only          # Collect + mark seen, no scoring or
 uv run cyberbriefing --stats                # DB stats by source
 uv run cyberbriefing --clear-source tldrsec # Reset seen-state for one source
 uv run cyberbriefing                        # Real run → Bear or Slack (per delivery.method)
-uv run pytest -q                            # 170 tests, ~2s
+uv run pytest -q                            # 203 tests, ~2s
 ```
 
 **Dependency management is uv-only.** The manifest is `pyproject.toml` + `uv.lock`; upgrade with `uv lock --upgrade` and `uv sync`. There is deliberately **no `requirements.txt`** — do not add one, and don't reintroduce a pip fallback (it's in `.gitignore` to keep it from creeping back). Python version is pinned in `.python-version`. Dependabot tracks the `uv` ecosystem, not pip.
@@ -46,6 +46,7 @@ src/cyberbriefing/     ← the importable package (src layout); imports are cybe
     aikido_scraper.py  ← Aikido Security blog
     twis_scraper.py    ← This Week in Security
     anthropic_red_scraper.py ← Anthropic Red Team
+    owasp_news_scraper.py ← OWASP news (JSON API behind owasp.org/news; no feed exists)
   delivery/
     formatter.py       ← Converts scored items → markdown (title, body, tags); _pretty_source() slug map
     dispatch.py        ← Routes (title, body, tags) to delivery.method; always writes the markdown backup

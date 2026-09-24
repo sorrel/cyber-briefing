@@ -3,9 +3,11 @@
 import os
 import tempfile
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 from cyberbriefing.db.state import get_connection, update_scraper_run
 from cyberbriefing.briefing import (
@@ -14,6 +16,14 @@ from cyberbriefing.briefing import (
     _secrets_blocked,
     _partition_for_mark_seen,
 )
+
+# The committed config only: a machine's gitignored config.local.yaml must not
+# decide whether the repo's own source lists agree.
+_COMMITTED_CONFIG = Path(__file__).parents[1] / "config.yaml"
+
+
+def _committed_sources() -> dict:
+    return yaml.safe_load(_COMMITTED_CONFIG.read_text(encoding="utf-8"))["sources"]
 
 
 @pytest.fixture
@@ -123,6 +133,21 @@ class TestScraperRegistry:
     def test_no_duplicate_names(self):
         names = [name for name, _, _ in _SCRAPER_REGISTRY]
         assert len(names) == len(set(names))
+
+    def test_every_configured_scraper_is_registered(self):
+        # A config entry with no registry entry never runs, however complete
+        # it looks, so the two lists must agree.
+        configured = set(_committed_sources()["scrapers"])
+        registered = {name for name, _, _ in _SCRAPER_REGISTRY}
+        assert configured == registered
+
+    def test_owasp_news_replaces_the_dead_owasp_feed(self):
+        names = [name for name, _, _ in _SCRAPER_REGISTRY]
+        feeds = _committed_sources()["rss_feeds"].values()
+
+        assert "owasp_news" in names
+        # owasp.org/feed.xml has returned 404 since the Next.js rebuild.
+        assert all(f["url"] != "https://owasp.org/feed.xml" for f in feeds)
 
 
 # ---------------------------------------------------------------------------

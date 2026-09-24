@@ -1,0 +1,162 @@
+{
+  "posts": [
+    {
+      "id": "cf6fb4fb-eaa5-41cb-ba30-25921790b542",
+      "slug": "owasp-website-fixes",
+      "title": "OWASP Website Fixes",
+      "excerpt": "The new website has had over 70 feature enhancements and bugs closed since launch. Let's find them all!",
+      "category": "News",
+      "tags": [
+        "OWASP-Web-Site"
+      ],
+      "status": "published",
+      "published_at": "2026-09-23T04:55:00+00:00",
+      "published_timezone": null,
+      "created_at": "2026-09-23T04:57:08.962536+00:00",
+      "updated_at": "2026-09-23T05:03:06.989279+00:00",
+      "is_featured": false,
+      "reading_time": 1
+    },
+    {
+      "id": "1e23e775-f254-4940-aefe-39e4053206ad",
+      "slug": "owasp-vulnerableapp-builds-a-benchmark",
+      "title": "OWASP VulnerableApp: Building a Benchmark for the Next Generation of Security Scanners",
+      "excerpt": "Security scanners are getting better, but how do we actually know how good they are?",
+      "category": "Projects",
+      "tags": [],
+      "status": "published",
+      "published_at": "2026-09-22T17:26:00+00:00",
+      "published_timezone": null,
+      "created_at": "2026-09-22T17:27:08.143929+00:00",
+      "updated_at": "2026-09-22T17:39:04.604696+00:00",
+      "is_featured": true,
+      "reading_time": 4
+    },
+    {
+      "id": "8050a874-125a-4dff-9d11-d3e1535d7834",
+      "slug": "owasp-mas-worked-with-eudi-program",
+      "title": "OWASP MAS worked with the Dutch EUDI program to create the OWASP MAS EUDI Wallet Profile",
+      "excerpt": "As part of the work to develop certification for the European Digital Identity Wallet (EUDIW), the OWASP MAS team partnered with the EUDI team to create the OWASP MAS EUDI Wallet Profile.",
+      "category": "News",
+      "tags": [],
+      "status": "published",
+      "published_at": "2026-09-18T08:59:00+00:00",
+      "published_timezone": null,
+      "created_at": "2026-09-18T09:00:15.317141+00:00",
+      "updated_at": "2026-09-18T09:02:51.168017+00:00",
+      "is_featured": true,
+      "reading_time": 2
+    },
+    {
+      "id": "fc75a3bc-39be-46b6-a679-4e1382978eca",
+      "slug": "eclipse-foundation-and-owasp",
+      "title": "Eclipse Foundation and OWASP Join Forces to Strengthen Open Source Security and CRA Readiness",
+      "excerpt": "Strategic collaboration will unite two global open source communities to advance security practices,\nsupport maintainers and stewards, and help organisations prepare for the EU Cyber Resilience Act.",
+      "category": "News",
+      "tags": [],
+      "status": "published",
+      "published_at": "2026-07-30T18:36:00+00:00",
+      "published_timezone": null,
+      "created_at": "2026-09-14T18:36:45.965449+00:00",
+      "updated_at": "2026-09-14T18:40:57.538582+00:00",
+      "is_featured": false,
+      "reading_time": 5
+    },
+    {
+      "id": "a178d53f-f512-422d-a494-c99bd83ab3d9",
+      "slug": "aikido-and-owasp-bring-agentic-code-audit-to-the-global-appsec-community",
+      "title": "Aikido and OWASP bring agentic Code Audit to the global AppSec community",
+      "excerpt": "Aikido Security and OWASP launch a new individual member benefit: pentester-grade code audits, powered by AI reasoning.",
+      "category": "News",
+      "tags": [
+        "Aikido"
+      ],
+      "status": "published",
+      "published_at": "2026-06-18T07:43:00+00:00",
+      "published_timezone": null,
+      "created_at": "2026-08-24T07:43:59.236787+00:00",
+      "updated_at": "2026-08-24T10:34:09.118814+00:00",
+      "is_featured": false,
+      "reading_time": 5
+    },
+    {
+      "id": "cf3331de-201f-49d3-baac-95e72050c877",
+      "slug": "community-update-regarding-richard-greenberg",
+      "title": "Community update regarding Richard Greenberg",
+      "excerpt": "For community clarity following several recent announcements by ISSA and Richard Greenberg, OWASP confirms that Richard Greenberg’s membership and participation in all OWASP activities was terminated in August 2023.",
+      "category": "Community",
+      "tags": [],
+      "status": "published",
+      "published_at": "2026-06-18T07:42:00+00:00",
+      "published_timezone": null,
+      "created_at": "2026-08-24T07:42:12.836512+00:00",
+      "updated_at": "2026-08-24T10:34:39.443804+00:00",
+      "is_featured": false,
+      "reading_time": 1
+    },
+    {
+      "id": "e372413b-5ad0-4761-bba0-982f720735bd",
+      "slug": "owasp-dependency-track-5-0-is-now-generally-available",
+      "title": "OWASP Dependency-Track 5.0 Is Now Generally Available",
+      "excerpt": "The largest redesign in the project’s history brings horizontal scaling, fault tolerance, and software supply chain integrity verification to the widely used open source platform.",
+      "category": "Projects",
+      "tags": [],
+      "status": "published",
+      "published_at": "2026-06-09T07:47:00+00:00",
+      "published_timezone": null,
+      "created_at": "2026-08-24T07:47:23.268091+00:00",
+      "updated_at": "2026-08-24T10:33:48.381798+00:00",
+      "is_featured": false,
+      "reading_time": 7
+    },
+    {
+      "id": "cf8d8465-b55c-4ca1-a36e-e218a48d08f9",
+      "slug": "owasp-cve-lite-cli-graduates-to-lab-project-status",
+      "title": "OWASP CVE Lite CLI Graduates to Lab Project Status",
+      "excerpt": "CVE Lite CLI, a fast open source dependency vulnerability scanner for JavaScript and TypeScript projects, has graduated to OWASP Lab Project status three months after its initial release.",
+      "category": "Projects",
+      "tags": [],
+      "status": "published",
+      "published_at": "2026-06-06T07:40:00+00:00",
+      "published_timezone": null,
+      "created_at": "2026-08-24T07:40:48.920796+00:00",
+      "updated_at": "2026-08-24T10:35:15.058771+00:00",
+      "is_featured": true,
+      "reading_time": 4
+    },
+    {
+      "id": "81954cb9-9976-4a61-9e1d-8cf9013eb85e",
+      "slug": "juice-shop-v20-0-0-a-fresh-squeeze-of-features-now-with-ai",
+      "title": "Juice Shop v20.0.0 — a fresh squeeze of features, now with AI",
+      "excerpt": "After months of work on the develop branch, OWASP Juice Shop v20.0.0 is ready to serve. This is a major version bump packed with new challenges, a redesigned storefront, and a long list of under-the-hood improvements. Read on to learn what’s new in this release.",
+      "category": "Projects",
+      "tags": [
+        "juice-shop"
+      ],
+      "status": "published",
+      "published_at": "2026-05-13T07:49:00+00:00",
+      "published_timezone": null,
+      "created_at": "2026-08-24T07:49:32.330892+00:00",
+      "updated_at": "2026-08-24T10:33:24.260263+00:00",
+      "is_featured": false,
+      "reading_time": 5
+    },
+    {
+      "id": "6b02ae50-9d9d-417d-bc6d-9985483a2af2",
+      "slug": "gsoc2026",
+      "title": "Google Summer of Code 2026!",
+      "excerpt": "On behalf of the entire OWASP Foundation, it is our absolute pleasure to welcome 26 new contributors to Google Summer of Code 2026. This summer, you're not just writing code, you're helping build a more secure world, one commit at a time.",
+      "category": "News",
+      "tags": [
+        "GSoC"
+      ],
+      "status": "published",
+      "published_at": "2026-05-11T16:04:58.09+00:00",
+      "published_timezone": null,
+      "created_at": "2026-05-11T15:57:25.883986+00:00",
+      "updated_at": "2026-05-11T17:02:39.228695+00:00",
+      "is_featured": true,
+      "reading_time": 4
+    }
+  ]
+}
