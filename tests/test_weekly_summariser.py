@@ -136,3 +136,31 @@ def test_summarise_week_raises_runtime_error_on_persistent_failure(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Anthropic API call failed after"):
         summarise_week(_ONE_STORY, {})
+
+
+class _CapturingMessages:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return _FakeResponse(_VALID_RESPONSE_JSON)
+
+
+def test_summarise_request_constrains_output_to_the_schema(monkeypatch):
+    """On 19 Oct 2026 both weekly fires failed on malformed JSON from Claude
+    ("Expecting ',' delimiter"). output_config.format makes the API enforce it."""
+    captured = _CapturingMessages()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(anthropic, "Anthropic", lambda api_key: _FakeClient(captured))
+
+    summarise_week(_ONE_STORY, {})
+
+    fmt = captured.calls[0].get("output_config", {}).get("format", {})
+    assert fmt.get("type") == "json_schema", (
+        f"request did not constrain output to a JSON schema: {fmt!r}"
+    )
+    story_schema = fmt["schema"]["properties"]["stories"]["items"]
+    # The fields parse_response reads must be guaranteed present.
+    for field in ("headline", "summary", "source_ids"):
+        assert field in story_schema["required"], f"{field} not required by schema"
