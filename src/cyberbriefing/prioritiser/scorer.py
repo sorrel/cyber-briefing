@@ -132,10 +132,10 @@ def _call_claude(client: anthropic.Anthropic, model: str, system_prompt: str,
 
 def _score_chunk(client: anthropic.Anthropic, model: str, system_prompt: str,
                  items: list[dict], max_items: int
-                 ) -> tuple[list[dict], bool, list[dict]]:
+                 ) -> tuple[list[dict], bool, list[dict], Exception | None]:
     """Score a chunk, retrying once at half-size if the call fails.
 
-    Returns (items, succeeded, unscored). succeeded=False means the API/parsing
+    Returns (items, succeeded, unscored, last_error). succeeded=False means the API/parsing
     failed for the entire chunk (full call and both halves) — used by the
     caller to detect a total-failure morning and skip mark-seen so the
     next launchd fire can retry the same items.
@@ -144,15 +144,19 @@ def _score_chunk(client: anthropic.Anthropic, model: str, system_prompt: str,
     or not the rest of the chunk survived. Without it a partly-failed chunk
     still counted as a success and its items were marked seen, so they never
     came back — 103 items were lost that way on 3 Aug 2026.
+
+    last_error is the most recent exception raised, or None. The caller reports
+    it verbatim rather than guessing a cause.
     """
     try:
-        return _call_claude(client, model, system_prompt, items, max_items), True, []
+        return _call_claude(client, model, system_prompt, items, max_items), True, [], None
     except (ValueError, anthropic.APIError) as e:
         logger.warning("Chunk of %d items failed (%s) — retrying in two halves", len(items), e)
+        last_error: Exception | None = e
 
     if len(items) <= 1:
         logger.error("Single-item chunk failed — skipping")
-        return [], False, list(items)
+        return [], False, list(items), last_error
 
     mid = len(items) // 2
     results: list[dict] = []
@@ -165,7 +169,8 @@ def _score_chunk(client: anthropic.Anthropic, model: str, system_prompt: str,
         except (ValueError, anthropic.APIError) as e:
             logger.error("Half-chunk of %d items failed — skipping: %s", len(half), e)
             unscored.extend(half)
-    return results, any_half_succeeded, unscored
+            last_error = e
+    return results, any_half_succeeded, unscored, last_error
 
 
 def score_items(items: list[dict], config: dict | None = None) -> dict:
@@ -225,13 +230,16 @@ def score_items(items: list[dict], config: dict | None = None) -> dict:
     all_scored: list[dict] = []
     unscored: list[dict] = []
     chunks_failed = 0
+    last_error: Exception | None = None
     for i, chunk in enumerate(chunks, 1):
         logger.info("Scoring chunk %d/%d (%d items)", i, n_chunks, len(chunk))
-        scored, ok, chunk_unscored = _score_chunk(
+        scored, ok, chunk_unscored, chunk_error = _score_chunk(
             client, model, system_prompt, chunk, max_items
         )
         all_scored.extend(scored)
         unscored.extend(chunk_unscored)
+        if chunk_error is not None:
+            last_error = chunk_error
         if not ok:
             chunks_failed += 1
     if unscored:
@@ -258,10 +266,9 @@ def score_items(items: list[dict], config: dict | None = None) -> dict:
         len(all_scored), n_chunks, chunks_failed,
     )
 
-    # Total failure = every chunk failed end-to-end. This is the signal that
-    # the API was transiently unavailable (e.g. 529 Overloaded across all
-    # retries) — distinct from "Claude scored items but none were above the
-    # threshold". The caller uses this to skip mark-seen so the next launchd
+    # Total failure = every chunk failed end-to-end: the API was unreachable or
+    # refusing (529 Overloaded, a dropped network, a bad key...). That is
+    # distinct from "Claude scored items but none were above the threshold". The caller uses this to skip mark-seen so the next launchd
     # fire can retry the same items rather than seeing only the trickle that
     # arrived in between.
     scoring_failed = n_chunks > 0 and chunks_failed == n_chunks
@@ -273,8 +280,11 @@ def score_items(items: list[dict], config: dict | None = None) -> dict:
         "chunks_failed": chunks_failed,
         # Items whose scoring call failed. The caller must not mark these seen.
         "unscored_ids": [it["id"] for it in unscored if it.get("id")],
+        # Name the error actually raised, never a guessed cause: on 21 Oct 2026
+        # a dropped network was reported as "likely Anthropic API overload".
         "failure_reason": (
-            f"All {n_chunks} scoring chunk(s) failed — likely Anthropic API overload"
+            f"All {n_chunks} scoring chunk(s) failed; last error: "
+            f"{type(last_error).__name__}: {last_error}"
             if scoring_failed else ""
         ),
     }

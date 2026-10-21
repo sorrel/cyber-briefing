@@ -146,3 +146,28 @@ def test_items_from_a_failed_chunk_are_reported_as_unscored(monkeypatch):
         f"expected the 50 items of the failed chunk, got {len(unscored)}"
     )
     assert not result["scoring_failed"], "one chunk succeeded — not a total failure"
+
+
+class ConnectionErrorMessages:
+    """Every request fails as it did on 21 Oct 2026 when the network dropped."""
+
+    def create(self, **kwargs):
+        import httpx2
+        raise scorer_mod.anthropic.APIConnectionError(
+            request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"))
+
+
+def test_total_failure_reason_reports_the_actual_error(monkeypatch):
+    """The reason must name the error raised, never guess at a cause."""
+    _install_fakes(monkeypatch)
+    monkeypatch.setattr(
+        scorer_mod.anthropic, "Anthropic",
+        lambda *a, **k: type("C", (), {"messages": ConnectionErrorMessages()})(),
+    )
+
+    result = score_items(_make_items(60), {"model": "m", "max_items": 15})
+
+    assert result["scoring_failed"]
+    reason = result["failure_reason"]
+    assert "APIConnectionError" in reason, reason
+    assert "overload" not in reason.lower(), reason
