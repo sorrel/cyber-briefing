@@ -17,6 +17,30 @@ logger = logging.getLogger("cyberbriefing.weekly.summariser")
 PROMPT_PATH = Path(__file__).parent / "prompt.txt"
 MAX_TOKENS = 8000
 
+# On 19 Oct 2026 both weekly fires got a 200 from Claude whose JSON was missing
+# a comma ("Expecting ',' delimiter"), so json.loads rejected the whole week.
+# output_config.format makes the API constrain the response to this schema, as
+# prioritiser/scorer.py does. Same JSON Schema subset rules apply: every object
+# needs "required" + "additionalProperties": false.
+STORY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "headline": {"type": "string"},
+        "summary": {"type": "string"},
+        "source_ids": {"type": "array", "items": {"type": "integer"}},
+    },
+    "required": ["headline", "summary", "source_ids"],
+    "additionalProperties": False,
+}
+RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "stories": {"type": "array", "items": STORY_SCHEMA},
+    },
+    "required": ["stories"],
+    "additionalProperties": False,
+}
+
 
 def load_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
@@ -102,6 +126,8 @@ def summarise_week(stories: list[dict], config: dict | None = None) -> list[dict
                 # omitted (OFF on Sonnet 4.6). Keep it off so thinking doesn't
                 # share the MAX_TOKENS budget with the summary output.
                 thinking={"type": "disabled"},
+                # Constrain the response to the summary schema — see RESPONSE_SCHEMA.
+                output_config={"format": {"type": "json_schema", "schema": RESPONSE_SCHEMA}},
                 system=[{
                     "type": "text",
                     "text": system_prompt,
