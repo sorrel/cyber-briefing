@@ -283,27 +283,25 @@ def run_pipeline(
     scored_items = scored_result.get("items", [])
     scoring_failed = scored_result.get("scoring_failed", False)
 
-    # Total scoring failure (e.g. Anthropic API overloaded across every chunk
-    # and every retry) — distinct from "Claude scored items but none above
-    # threshold". Do NOT mark items seen, so the next launchd fire retries
-    # the same items rather than seeing only the trickle that arrived since.
-    # If we're already past the last scheduled fire of the day (>= 07:00 ish,
-    # the 07:30 fallback), also push an error note to Bear so the user gets
-    # visibility instead of silence.
+    # Total scoring failure: every chunk failed end-to-end, which is distinct
+    # from "Claude scored items but none above threshold". Do NOT mark items seen,
+    # so the next fire retries the same items rather than seeing only the
+    # trickle that arrived since. Past 07:00 a fire may be the day's last
+    # scheduled one, so also send an error note via the delivery method so the
+    # user gets visibility instead of silence.
     if scoring_failed:
         reason = scored_result.get("failure_reason", "unknown")
         logger.error("Scoring failed: %s — NOT marking items seen so next fire can retry.", reason)
         if not dry_run:
             _write_failure_marker(kind="scoring_failed", detail=reason)
-            # The 07:30 fire is the day's last automatic attempt. After ~07:00
-            # there is no more retry today, so escalate to Bear.
             if datetime.now().hour >= 7:
-                logger.error("Past 07:00 — escalating scoring failure to Bear.")
-                _deliver_scoring_failure(config.get("delivery", {}), reason, len(new_items))
-                # Mark delivered so a manually-triggered later fire doesn't
-                # double-up the error note. A real briefing was not produced,
-                # but the user has been notified for the day.
-                mark_delivered_today(db_conn)
+                delivery_cfg = config.get("delivery", {})
+                logger.error("Past 07:00: escalating scoring failure via %s.",
+                             delivery_cfg.get("method", "bear"))
+                _deliver_scoring_failure(delivery_cfg, reason, len(new_items))
+                # Deliberately NOT mark_delivered_today: no briefing went out,
+                # and the note may not have either. On 21 Oct 2026 marking it
+                # made a manual re-fire skip after the network came back.
         return False
 
     if not scored_items:
@@ -365,13 +363,15 @@ _FAILURE_BODIES = {
         "--start <fire time> --info` for sandbox / quarantine-resolver errors\n"
     ),
     "scoring_failed": (
-        "Every chunk sent to Claude for scoring failed end-to-end — typically "
-        "HTTP 529 Overloaded across all retries. Items were *not* marked as "
-        "seen, so the 07:30 launchd fallback (if this was the 06:15 fire) "
-        "will retry the same items with the recovered API.\n\n"
+        "Every chunk sent to Claude for scoring failed end-to-end. The reported "
+        "reason below is the last error raised. Items were *not* marked as "
+        "seen, so the next fire, scheduled or manual, retries the same items.\n\n"
         "Check first:\n"
-        "- `/tmp/cyberbriefing.log` for the exact API errors per chunk\n"
-        "- Anthropic status page if the same failure repeats across both fires\n"
+        "- `/tmp/cyberbriefing.err` for the exact error per chunk\n"
+        "- A connection or name-resolution error points at the local network; "
+        "an HTTP status (429, 529, 5xx) points at the Anthropic API\n"
+        "- Re-fire once resolved: `launchctl kickstart -k "
+        "gui/$(id -u)/com.cyberbriefing.daily`\n"
     ),
     "secrets_unavailable": (
         "The `.env` secrets never loaded: the 1Password local-env FIFO was not "
@@ -412,8 +412,8 @@ def _write_failure_marker(kind: str = "all_sources_zero", detail: str = "") -> N
 
 
 def _deliver_scoring_failure(delivery_cfg: dict, reason: str, new_item_count: int) -> bool:
-    """Send a short error note via the configured method when the *last*
-    scheduled fire of the day still couldn't score. Gives the user visibility
+    """Send a short error note via the configured method when a fire past
+    07:00 still couldn't score. Gives the user visibility
     instead of silence. Returns whether the note (or its markdown backup) was
     preserved.
     """
@@ -427,10 +427,10 @@ def _deliver_scoring_failure(delivery_cfg: dict, reason: str, new_item_count: in
         f"**Reason:** {reason or 'unknown'}\n\n"
         "The full markdown backup of today's gathered items is not produced "
         "in this state — only scored items are formatted. Check "
-        "`/tmp/cyberbriefing.log` for per-chunk API errors, and the "
+        "`/tmp/cyberbriefing.err` for per-chunk errors, and the "
         "`FAILURE-{date}.md` file in `~/cyberbriefing-output/` for diagnosis hints.\n\n"
-        "*This note was delivered because the 07:30 fallback fire also failed — "
-        "no further automatic retry will run today.*\n"
+        "*Items were left unseen, so a re-fire retries them: "
+        "`launchctl kickstart -k gui/$(id -u)/com.cyberbriefing.daily`.*\n"
     ).replace("{date}", date)
     try:
         return deliver(delivery_cfg, title, body,

@@ -206,3 +206,67 @@ class TestPartitionForMarkSeen:
         )
         assert [i["id"] for i in included] == ["a"]
         assert excluded == []
+
+
+# ---------------------------------------------------------------------------
+# run_pipeline: total scoring failure past the last scheduled fire
+# ---------------------------------------------------------------------------
+
+class _AfterLastFire(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 10, 21, 8, 41, tzinfo=tz)
+
+
+class TestScoringFailureEscalation:
+    """On 21 Oct 2026 the network dropped mid-run: every chunk failed with a
+    connection error, the escalation note to Slack failed too, yet the day was
+    marked delivered, so a manual re-fire skipped. The marker blamed 'Anthropic
+    API overload' and the log said 'Bear' on a Slack-delivering machine."""
+
+    def _run(self, conn, caplog, method="slack"):
+        import cyberbriefing.briefing as b
+        from cyberbriefing.db.state import was_delivered_today
+
+        delivered = []
+        item = {"id": "i0", "source": "s", "title": "t", "url": "http://x/0",
+                "published": ""}
+        with patch.object(b, "get_connection", return_value=conn), \
+             patch.object(b, "gather_all", return_value=([item], 1)), \
+             patch.object(b, "score_items", return_value={
+                 "items": [], "scoring_failed": True,
+                 "failure_reason": "All 1 scoring chunk(s) failed; "
+                                   "last error: APIConnectionError: Connection error.",
+             }), \
+             patch.object(b, "_write_failure_marker"), \
+             patch.object(b, "_maybe_prune"), \
+             patch.object(b, "deliver",
+                          side_effect=lambda cfg, t, body, tags: delivered.append(body) or True), \
+             patch.object(b, "datetime", _AfterLastFire):
+            ok = b.run_pipeline({"delivery": {"method": method}, "scoring": {}})
+        return ok, delivered, was_delivered_today(conn)
+
+    def test_failure_does_not_mark_the_day_delivered(self, conn, caplog):
+        ok, delivered, marked = self._run(conn, caplog)
+        assert not ok
+        assert delivered, "the escalation note should still be sent"
+        assert not marked, "no briefing went out, so a re-fire must not skip"
+
+    def test_escalation_log_names_the_configured_method(self, conn, caplog):
+        caplog.set_level("ERROR", logger="cyberbriefing")
+        self._run(conn, caplog, method="slack")
+        text = caplog.text
+        assert "slack" in text
+        assert "Bear" not in text
+
+    def test_escalation_note_states_no_schedule(self, conn, caplog):
+        _, delivered, _ = self._run(conn, caplog)
+        assert "07:30" not in delivered[0]
+        assert "APIConnectionError" in delivered[0]
+
+
+def test_scoring_failure_marker_body_assumes_no_cause():
+    from cyberbriefing.briefing import _FAILURE_BODIES
+    body = _FAILURE_BODIES["scoring_failed"]
+    for guess in ("typically", "Overloaded", "overload", "07:30", "06:15"):
+        assert guess not in body, f"marker body asserts an unverified cause: {guess!r}"
