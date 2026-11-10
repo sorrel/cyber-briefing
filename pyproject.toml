@@ -25,5 +25,9 @@ dev = [
     "pytest>=9.1.1",
 ]
 
+[tool.uv]
+# uv below 0.13.4 trusts the compromised eMudhra root (GHSA-hq85-5cpj-mr62)
+required-version = ">=0.13.4"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/cyberbriefing"]
