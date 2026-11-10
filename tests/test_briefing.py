@@ -1,5 +1,6 @@
 """Tests for briefing.py helpers."""
 
+import logging
 import os
 import tempfile
 from datetime import datetime, timezone, timedelta
@@ -113,6 +114,50 @@ class TestRunScraper:
         config = {"my_scraper": {"enabled": True}}
         items = _run_scraper(conn, config, "my_scraper", module, default_interval=24)
         assert items == []
+
+    # Zero items from a scraper is never a quiet day: none of them filter by
+    # date, each returns the source's current list. Zero means the fetch
+    # failed or the site changed its markup, which until now looked exactly
+    # like a quiet week in the logs (anthropic_red sat dark for months).
+
+    def test_zero_items_logs_a_warning_naming_the_scraper(self, conn, caplog):
+        module = self._mock_module(return_value=[])
+        with caplog.at_level(logging.WARNING, logger="cyberbriefing"):
+            _run_scraper(conn, {}, "my_scraper", module, default_interval=24)
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "my_scraper" in warnings[0].getMessage()
+        assert "0 items" in warnings[0].getMessage()
+
+    def test_items_log_no_warning(self, conn, caplog):
+        module = self._mock_module()
+        with caplog.at_level(logging.WARNING, logger="cyberbriefing"):
+            _run_scraper(conn, {}, "my_scraper", module, default_interval=24)
+
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    def test_zero_items_does_not_stamp_the_run(self, conn):
+        # A failed fetch must not cost a whole interval: a 168h scraper
+        # stamped on a transient error would skip a week. The next fire retries.
+        empty = self._mock_module(return_value=[])
+        _run_scraper(conn, {}, "my_scraper", empty, default_interval=168)
+
+        recovered = self._mock_module()
+        items = _run_scraper(conn, {}, "my_scraper", recovered, default_interval=168)
+
+        assert len(items) == 1
+        recovered.collect.assert_called_once()
+
+    def test_skipped_scrapers_log_no_warning(self, conn, caplog):
+        # Disabled or not yet due is normal, not a zero-item result.
+        module = self._mock_module()
+        update_scraper_run(conn, "due_later")
+        with caplog.at_level(logging.WARNING, logger="cyberbriefing"):
+            _run_scraper(conn, {"off": {"enabled": False}}, "off", module, 24)
+            _run_scraper(conn, {}, "due_later", module, 24)
+
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 # ---------------------------------------------------------------------------

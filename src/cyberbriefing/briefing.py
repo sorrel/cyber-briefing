@@ -77,7 +77,15 @@ _SCRAPER_REGISTRY = [
 
 
 def _run_scraper(db_conn, scrapers_config: dict, name: str, module, default_interval: int) -> list[dict]:
-    """Gate a scraper on its enabled flag and interval, then collect."""
+    """Gate a scraper on its enabled flag and interval, then collect.
+
+    No scraper filters by date: each returns its source's current list, so a
+    run that is due and comes back empty means the fetch failed or the site's
+    markup changed, never a quiet day. That gets a warning here, for every
+    scraper, and the run is not stamped, so the next fire retries rather than
+    waiting out the whole interval (a week, for the 168h scrapers). Some
+    modules also log their own warning naming the likely cause.
+    """
     conf = scrapers_config.get(name, {})
     if not conf.get("enabled", True):
         return []
@@ -85,6 +93,13 @@ def _run_scraper(db_conn, scrapers_config: dict, name: str, module, default_inte
     if not should_check_scraper(db_conn, name, interval):
         return []
     items = module.collect(conf)
+    if not items:
+        logging.getLogger("cyberbriefing").warning(
+            "Scraper %s returned 0 items: fetch failed or the page markup has "
+            "changed; not recording the run, so the next fire retries",
+            name,
+        )
+        return []
     update_scraper_run(db_conn, name)
     return items
 

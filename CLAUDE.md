@@ -208,7 +208,6 @@ Open ideas, none of them urgent — the pipeline has run without them for months
 
 - **No retry on collector HTTP calls.** Every collector sets a timeout but makes a single attempt; a transient failure just drops that source for the run. A `requests.Session` with a retry adapter would cover it.
 - **No inter-request sleep in the NVD collector.** Without `NVD_API_KEY` the API allows 5 requests per 30s; `nvd.py` makes 2 (HIGH + CRITICAL) back to back, which is under the limit but has no margin if a third query is ever added.
-- **No per-scraper zero-item warning.** The all-sources-failed alarm catches a total blackout, but a single scraper silently returning nothing after a site redesign looks identical to a quiet week for that source.
 - **No `--log-file` flag.** launchd captures stdout to `/tmp/cyberbriefing.log`; a manual run has to be redirected by hand.
 
 ## Common issues
@@ -218,4 +217,4 @@ Open ideas, none of them urgent — the pipeline has run without them for months
 - **`FAILURE-<date>.md`**: every source returned zero items — see constraint 2; check `/tmp/cyberbriefing.err` and any Network Extension (TripMode, Little Snitch, VPN).
 - **`FAILURE-…-secrets_unavailable`**: the `.env` load timed out — unlock the secrets manager, or check the `.env` is readable.
 - **No briefing, no log, no backup, no `FAILURE` file**: the agents are not loaded. Run `./healthcheck.sh`; usually constraint 5 (background item disallowed).
-- **A scraper returning zero items**: the site was probably redesigned; check that scraper's HTML selectors.
+- **`Scraper <name> returned 0 items`** in `/tmp/cyberbriefing.err`: no scraper filters by date, so zero is never a quiet day. Either the fetch failed or the site was redesigned; check that scraper's HTML selectors. `briefing._run_scraper` does not stamp `scraper_runs` on a zero result, so every fire retries it until it recovers, rather than waiting out its interval.
