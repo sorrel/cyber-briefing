@@ -235,3 +235,65 @@ def test_accepts_rows_on_anthropic_subdomains(monkeypatch):
     )
 
     assert len(scraper.collect()) == 2
+
+
+# ---------------------------------------------------------------------------
+# The November 2026 redesign
+#
+# By 4 Nov 2026 the list had become a grid of <article> cards, each with its
+# <time> in a header and the link on the title, so no anchor wraps a <time>
+# any more and the collector found zero posts. A carousel of four featured
+# posts repeats entries from the grid, again with the <time> outside the
+# link and a team link ("Frontier Red Team") next to it. The fixture is a
+# trimmed capture of the live page, with nav, team list and footer kept as
+# noise.
+# ---------------------------------------------------------------------------
+
+FIXTURE_2026_11 = Path(__file__).parent / "fixtures" / "anthropic_red_2026-11.html"
+
+
+@pytest.fixture
+def cards_page(monkeypatch):
+    html = FIXTURE_2026_11.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        scraper.requests, "get", lambda url, **kwargs: _FakeResponse(html)
+    )
+
+
+def test_cards_collect_every_publication_once(cards_page):
+    # 24 cards; the 4 carousel entries are repeats and must not double up.
+    items = scraper.collect()
+    urls = [i["url"] for i in items]
+
+    assert len(items) == 24
+    assert len(set(urls)) == 24
+    assert urls.count("https://www.anthropic.com/research/formal-verification") == 1
+
+
+def test_cards_titles_and_dates(cards_page):
+    by_url = {i["url"]: i for i in scraper.collect()}
+    item = by_url["https://www.anthropic.com/research/provable-inference"]
+
+    assert item["title"] == "Progress on provable inference for large language models"
+    assert item["published"].startswith("2026-11-02")
+
+
+def test_cards_never_attribute_a_post_to_the_team_link(cards_page):
+    # The carousel's <time> sits beside a link to the team page itself; that
+    # link is chrome, never a post.
+    urls = [i["url"] for i in scraper.collect()]
+
+    assert not any("/research/team/" in u for u in urls)
+    assert "https://www.anthropic.com/" not in urls
+
+
+def test_cards_take_the_headline_not_the_read_more_button(cards_page):
+    # A carousel slide links its post twice, headline then "Read more"; the
+    # slide comes before the card, so it decides the title.
+    titles = [i["title"] for i in scraper.collect()]
+
+    assert "Read more" not in titles
+    assert (
+        "Launching an opt-in vulnerability-finding service for open-source software"
+        in titles
+    )
