@@ -9,6 +9,11 @@ anthropic.com and its posts are rendered as a ``PublicationList``: one ``<a>``
 per post wrapping a ``<time>``, a subject ``<span>`` and a title ``<span>``.
 The previous ``<a><h3>`` markup is gone, which is why this collector returned
 zero items on every run until 8 Sep 2026.
+
+By 4 Nov 2026 the list had become a grid of ``<article>`` cards with the
+``<time>`` in a header and the link on the title, so no anchor wrapped a
+``<time>`` and the collector went dark again. Rows are now found from the
+``<time>`` outwards (see ``_post_link``), which handles both shapes.
 """
 
 import logging
@@ -16,7 +21,7 @@ from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from .base import USER_AGENT_BOT, host_matches, make_item, truncate
 
@@ -59,6 +64,54 @@ def _title_by_subtraction(link_tag) -> str:
     return row.get_text(" ", strip=True)
 
 
+# How far up from a <time> to look for its post link. A card needs two
+# levels (header, article) and the featured carousel two (header, body);
+# a little headroom, but never far enough to reach a whole-page container.
+_MAX_CLIMB = 3
+_PAGE_LEVEL = {"body", "html", "main", "[document]"}
+
+
+def _is_chrome_link(href: str) -> bool:
+    """A link that sits beside a post's date but is never the post itself."""
+    path = href.split("?", 1)[0].split("#", 1)[0].rstrip("/")
+    return path in ("", "/research") or "/research/team/" in path + "/"
+
+
+def _post_link(time_tag):
+    """Return the anchor a row's ``<time>`` belongs to, or None.
+
+    Two shapes are in the wild. The September 2026 list wrapped the whole
+    row, ``<time>`` included, in its ``<a>``. The November 2026 cards put the
+    ``<time>`` in a header and the ``<a>`` on the title, so the link is a
+    sibling's descendant. Climb from the ``<time>`` until an ancestor holds
+    exactly one non-chrome link: zero means keep climbing, more than one
+    means the ancestor spans several rows and the date is ambiguous.
+    """
+    wrapping = time_tag.find_parent("a", href=True)
+    if wrapping is not None:
+        return wrapping
+
+    node = time_tag
+    for _ in range(_MAX_CLIMB):
+        node = node.parent
+        if node is None or node.name in _PAGE_LEVEL:
+            return None
+        # One entry per post. A post linked twice (headline, then a "Read
+        # more" button) keeps the anchor with the most text: the headline.
+        links: dict[str, Tag] = {}
+        for a in node.find_all("a", href=True):
+            if _is_chrome_link(a["href"]):
+                continue
+            kept = links.get(a["href"])
+            if kept is None or len(a.get_text(strip=True)) > len(kept.get_text(strip=True)):
+                links[a["href"]] = a
+        if len(links) == 1:
+            return next(iter(links.values()))
+        if len(links) > 1:
+            return None
+    return None
+
+
 def _parse_date(time_tag) -> str | None:
     """Turn the row's ``<time>`` into ISO-8601, or None if it can't be read."""
     raw = (time_tag.get("datetime") or time_tag.get_text(strip=True) or "").strip()
@@ -98,19 +151,24 @@ def collect(config: dict | None = None) -> list[dict]:
     items = []
     seen_urls: set[str] = set()
 
-    # A publication row is the only anchor on the page carrying a <time>. That
-    # single structural test drops the nav, the featured "Read more" card and
-    # the whole footer without depending on any class name.
-    for link_tag in soup.find_all("a", href=True):
-        time_tag = link_tag.find("time")
-        if time_tag is None:
+    # A publication row is anchored on its <time>: nav, team links and footer
+    # carry none, so keying off the date drops them without depending on any
+    # class name. _post_link then finds the row's link in either markup shape.
+    for time_tag in soup.find_all("time"):
+        link_tag = _post_link(time_tag)
+        if link_tag is None:
             continue
 
-        title_tag = _by_class_suffix(link_tag, _TITLE_SUFFIX)
-        if title_tag is not None:
-            title = title_tag.get_text(" ", strip=True)
+        if link_tag.find("time") is not None:
+            # Old shape: the anchor wraps date, subject and title together.
+            title_tag = _by_class_suffix(link_tag, _TITLE_SUFFIX)
+            if title_tag is not None:
+                title = title_tag.get_text(" ", strip=True)
+            else:
+                title = _title_by_subtraction(link_tag)
         else:
-            title = _title_by_subtraction(link_tag)
+            # Card shape: the anchor holds only the title.
+            title = link_tag.get_text(" ", strip=True)
 
         # Resolve against the response URL so a redirect (red.anthropic.com →
         # anthropic.com) can never leave us minting links on a dead host.

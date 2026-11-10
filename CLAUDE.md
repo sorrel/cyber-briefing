@@ -2,18 +2,18 @@
 
 ## What this is
 
-A Python pipeline that produces a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel. It gathers from 38 live sources (26 RSS feeds, 8 scrapers, 4 APIs), scores each item with Claude, and formats a tiered markdown document.
+A Python pipeline that produces a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel. It gathers from 39 live sources (28 RSS feeds, 8 scrapers, 3 APIs; the HackerOne collector exists but is disabled), scores each item with Claude, and formats a tiered markdown document.
 
 ## Running it
 
 ```bash
 # Always use uv
-uv run cyberbriefing --dry-run              # Full pipeline → stdout (no state changes)
+uv run cyberbriefing --dry-run              # Full pipeline → stdout (no state changes; scrapers not yet due are skipped)
 uv run cyberbriefing --gather-only          # Collect + mark seen, no scoring or delivery
 uv run cyberbriefing --stats                # DB stats by source
 uv run cyberbriefing --clear-source tldrsec # Reset seen-state for one source
 uv run cyberbriefing                        # Real run → Bear or Slack (per delivery.method)
-uv run pytest -q                            # 204 tests, ~2s
+uv run pytest -q                            # full suite, ~3s
 ```
 
 **Dependency management is uv-only.** The manifest is `pyproject.toml` + `uv.lock`; upgrade with `uv lock --upgrade` and `uv sync`. There is deliberately **no `requirements.txt`** — do not add one, and don't reintroduce a pip fallback (it's in `.gitignore` to keep it from creeping back). Python version is pinned in `.python-version`. Dependabot tracks the `uv` ecosystem, not pip.
@@ -37,7 +37,7 @@ src/cyberbriefing/     ← the importable package (src layout); imports are cybe
     rss.py             ← Generic RSS/Atom for all feed sources
     cisa_kev.py        ← CISA Known Exploited Vulnerabilities catalogue
     nvd.py             ← NVD CVE API (CVSS ≥ 7.0 filter)
-    hackerone.py       ← HackerOne Hacktivity (requires auth)
+    hackerone.py       ← HackerOne Hacktivity (requires auth; disabled in config.yaml)
     github_advisories.py ← GitHub GraphQL advisories
     enisa_scraper.py   ← ENISA publications
     ico_scraper.py     ← ICO enforcement actions
@@ -170,7 +170,7 @@ uv run cyberbriefing-weekly             # → Bear or Slack (per delivery.method
 
 ## Operational constraints (learned the hard way)
 
-Four failure modes cost real debugging time. The fixes are in the code; the reasoning is here so it isn't re-derived or undone.
+Five failure modes cost real debugging time. The fixes are in the code; the reasoning is here so it isn't re-derived or undone.
 
 **1. Dark-wake DNS (EBADF).** On an always-on Mac, macOS holds the user session in a reduced "dark wake" overnight; `mDNSResponder`'s mach port is gated, and `getaddrinfo` returns `OSError: [Errno 9] Bad file descriptor` on every lookup — every collector fails. Two things are required together: the Aqua/Interactive plist context (a daemon-style spawn has no usable resolver port at all), **and** a `pmset repeat` wake a few minutes before the fire. `caffeinate -is` only blocks *new* sleep transitions during the run; it cannot restore a session already degraded at start. Ruled out and not worth re-exploring: DNS cache flush, `mDNSResponder` HUP, forcing `AF_INET`, respawning for fresh FDs, longer post-restart probe windows.
 
@@ -180,14 +180,16 @@ Four failure modes cost real debugging time. The fixes are in the code; the reas
 
 **4. Whole-process watchdog.** `config_loader.arm_runtime_watchdog()` — a daemon-thread 15-minute process timeout armed at the top of `main()` in both entry points, so any future hang can't hold a launchd slot. A thread, not `SIGALRM`, so it never collides with (3). Caveat: the Anthropic client's 600s read timeout plus a half-size retry means a badly degraded API could approach 15 min and be killed mid-run — the fallback fire then retries.
 
-Related fail-fast: `briefing._secrets_blocked()` aborts a real delivery run whose env load timed out *before* gather, writing a `secrets_unavailable` marker (accurate cause, not a misleading "scoring failed"). `--stats`, `--gather-only` and `--dry-run` are exempt.
+**5. Background item disallowed (agents vanish after a reboot).** macOS Background Task Management can mark a LaunchAgent `disallowed` (System Settings > General > Login Items & Extensions > Allow in the Background; the entries show as `caffeinate`, the plists' executable). A disallowed agent is not loaded at login, so after the next reboot or log-out nothing fires and nothing is logged: no `/tmp` logs, no backup, no `FAILURE` file. A manual `launchctl bootstrap` still succeeds, which makes a reinstall look healthy until the next reboot. Rewriting a plist re-registers it and can flip it back. Diagnose with `sudo sfltool dumpbtm` (look for `Disposition: [enabled, disallowed, ...]`); `./healthcheck.sh` flags the agent as not loaded. This is why `install_launchd.sh` no longer runs `--gather-only`: it marks every gathered item seen, so reinstalling on a missed morning would swallow that day's briefing.
+
+Related fail-fast: `briefing._secrets_blocked()` aborts a real delivery run whose env load timed out *before* gather, writing a `secrets_unavailable` marker (accurate cause, not a misleading "scoring failed"). `--stats`, `--gather-only` and `--dry-run` are exempt. Both entry points check the delivered marker *before* this gate (it needs only the local DB), so a fallback fire that meets a locked 1Password on a day or week that already delivered exits 0 quietly instead of writing a FAILURE marker over it.
 
 ## Secrets
 
 A gitignored `.env` at the repo root, loaded via `load_env_with_timeout`. Either a plain file or a 1Password local-env FIFO works — see constraint 3 above for what the FIFO costs. Keys (names as the code reads them):
 
 - `ANTHROPIC_API_KEY` — required, for Claude scoring
-- `HACKERONE_API_USER` / `HACKERONE_API_TOKEN` — optional, HackerOne collector
+- `HACKERONE_API_USER` / `HACKERONE_API_TOKEN` — optional, HackerOne collector (also set `sources.hackerone.enabled: true`)
 - `NVD_API_KEY` — optional, higher NVD rate limits
 - `GITHUB_TOKEN` — optional, GitHub Advisories collector
 - `SLACK_BOT_TOKEN` — optional, only for `delivery.method: slack`
@@ -206,7 +208,6 @@ Open ideas, none of them urgent — the pipeline has run without them for months
 
 - **No retry on collector HTTP calls.** Every collector sets a timeout but makes a single attempt; a transient failure just drops that source for the run. A `requests.Session` with a retry adapter would cover it.
 - **No inter-request sleep in the NVD collector.** Without `NVD_API_KEY` the API allows 5 requests per 30s; `nvd.py` makes 2 (HIGH + CRITICAL) back to back, which is under the limit but has no margin if a third query is ever added.
-- **No per-scraper zero-item warning.** The all-sources-failed alarm catches a total blackout, but a single scraper silently returning nothing after a site redesign looks identical to a quiet week for that source.
 - **No `--log-file` flag.** launchd captures stdout to `/tmp/cyberbriefing.log`; a manual run has to be redirected by hand.
 
 ## Common issues
@@ -215,4 +216,5 @@ Open ideas, none of them urgent — the pipeline has run without them for months
 - **Bear note missing**: expected on some mornings and undetectable client-side — the markdown backup in `~/cyberbriefing-output/` is always written; open that.
 - **`FAILURE-<date>.md`**: every source returned zero items — see constraint 2; check `/tmp/cyberbriefing.err` and any Network Extension (TripMode, Little Snitch, VPN).
 - **`FAILURE-…-secrets_unavailable`**: the `.env` load timed out — unlock the secrets manager, or check the `.env` is readable.
-- **A scraper returning zero items**: the site was probably redesigned; check that scraper's HTML selectors.
+- **No briefing, no log, no backup, no `FAILURE` file**: the agents are not loaded. Run `./healthcheck.sh`; usually constraint 5 (background item disallowed).
+- **`Scraper <name> returned 0 items`** in `/tmp/cyberbriefing.err`: no scraper filters by date, so zero is never a quiet day. Either the fetch failed or the site was redesigned; check that scraper's HTML selectors. `briefing._run_scraper` does not stamp `scraper_runs` on a zero result, so every fire retries it until it recovers, rather than waiting out its interval.

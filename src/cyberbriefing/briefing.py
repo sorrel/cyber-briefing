@@ -76,8 +76,20 @@ _SCRAPER_REGISTRY = [
 ]
 
 
-def _run_scraper(db_conn, scrapers_config: dict, name: str, module, default_interval: int) -> list[dict]:
-    """Gate a scraper on its enabled flag and interval, then collect."""
+def _run_scraper(db_conn, scrapers_config: dict, name: str, module, default_interval: int,
+                 record_run: bool = True) -> list[dict]:
+    """Gate a scraper on its enabled flag and interval, then collect.
+
+    No scraper filters by date: each returns its source's current list, so a
+    run that is due and comes back empty means the fetch failed or the site's
+    markup changed, never a quiet day. That gets a warning here, for every
+    scraper, and the run is not stamped, so the next fire retries rather than
+    waiting out the whole interval (a week, for the 168h scrapers). Some
+    modules also log their own warning naming the likely cause.
+
+    ``record_run=False`` (a dry run) still honours the interval but never
+    stamps it, so a preview cannot make the next real run skip a scraper.
+    """
     conf = scrapers_config.get(name, {})
     if not conf.get("enabled", True):
         return []
@@ -85,11 +97,19 @@ def _run_scraper(db_conn, scrapers_config: dict, name: str, module, default_inte
     if not should_check_scraper(db_conn, name, interval):
         return []
     items = module.collect(conf)
-    update_scraper_run(db_conn, name)
+    if not items:
+        logging.getLogger("cyberbriefing").warning(
+            "Scraper %s returned 0 items: fetch failed or the page markup has "
+            "changed; not recording the run, so the next fire retries",
+            name,
+        )
+        return []
+    if record_run:
+        update_scraper_run(db_conn, name)
     return items
 
 
-def gather_all(config: dict, db_conn) -> tuple[list[dict], int]:
+def gather_all(config: dict, db_conn, record_runs: bool = True) -> tuple[list[dict], int]:
     """Run all collectors and return (unseen items, total items collected).
 
     The total-collected count is the failure signal for run_pipeline: a healthy
@@ -138,7 +158,8 @@ def gather_all(config: dict, db_conn) -> tuple[list[dict], int]:
     scrapers = config.get("sources", {}).get("scrapers", {})
     for name, module, default_interval in _SCRAPER_REGISTRY:
         try:
-            all_items.extend(_run_scraper(db_conn, scrapers, name, module, default_interval))
+            all_items.extend(_run_scraper(db_conn, scrapers, name, module, default_interval,
+                                          record_run=record_runs))
         except Exception as e:
             logging.getLogger("cyberbriefing").warning("Scraper %s failed: %s", name, e)
 
@@ -206,34 +227,40 @@ def run_pipeline(
     """
     logger = logging.getLogger("cyberbriefing")
 
+    db_conn = get_connection()
+
+    # Idempotency: the launchd fallback fires the same script, so exit cleanly
+    # if an earlier fire already delivered today. Skipped for dry-run and
+    # gather-only so manual re-runs aren't blocked. This needs only the local
+    # DB, so it runs before the secrets gate: otherwise a fallback fire that
+    # meets a locked 1Password after a successful delivery writes a FAILURE
+    # marker over a good day.
+    if not dry_run and not gather_only and was_delivered_today(db_conn):
+        logger.info("Briefing already delivered today — skipping.")
+        return True
+
     # Fail fast if secrets never loaded (1Password FIFO not fed). Do this before
-    # touching the DB or network so a locked morning frees the launchd slot for
-    # the fallback fire, and writes an *accurate* marker rather than the
+    # touching the network so a locked morning frees the launchd slot for the
+    # fallback fire, and writes an *accurate* marker rather than the
     # misleading "scoring failed / API overloaded" one that would follow.
     if _secrets_blocked(env_ready, dry_run, gather_only):
         logger.error("Secrets unavailable (1Password FIFO not fed) — aborting before gather.")
         _write_failure_marker(kind="secrets_unavailable")
         return False
 
-    db_conn = get_connection()
-
-    # Idempotency: the launchd 07:30 fallback fires the same script — exit
-    # cleanly if 06:15 already delivered today. Skipped for dry-run/gather-only
-    # so manual re-runs aren't blocked.
-    if not dry_run and not gather_only and was_delivered_today(db_conn):
-        logger.info("Briefing already delivered today — skipping.")
-        return True
-
     # --- Periodic DB maintenance (auto-prunes items >180 days old that were
     #     never included in a briefing; runs at most once a month) ---
-    _maybe_prune(db_conn)
+    # Not on a dry run: it deletes rows and stamps _db_prune, and a dry run
+    # makes no state changes.
+    if not dry_run:
+        _maybe_prune(db_conn)
 
     # --- Stage 1: Gather ---
     logger.info("=" * 50)
     logger.info("Stage 1: Gathering from all sources")
     logger.info("=" * 50)
 
-    new_items, total_gathered = gather_all(config, db_conn)
+    new_items, total_gathered = gather_all(config, db_conn, record_runs=not dry_run)
 
     if gather_only:
         logger.info("Gather-only mode: %d new items found", len(new_items))

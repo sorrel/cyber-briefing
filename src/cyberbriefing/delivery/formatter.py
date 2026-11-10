@@ -231,6 +231,8 @@ def _pretty_source(slug: str) -> str:
         "commons_library": "Commons Library",
         "uk_parliament": "UK Parliament",
         "aws_security": "AWS Security",
+        "aws_security_bulletins": "AWS Security Bulletins",
+        "cloudflare_zero_wire": "Cloudflare Zero Wire",
         "azure_updates": "Azure Updates",
         "the_register": "The Register",
         "tldr_infosec": "TLDR Infosec",

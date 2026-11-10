@@ -110,6 +110,15 @@ def main(argv: list[str] | None = None) -> int:
     # locked. Mirrors briefing.py; see CLAUDE.md (2 Jul 2026).
     watchdog = config_loader.arm_runtime_watchdog(max_seconds=900)
     env_ready = config_loader.load_env_with_timeout(Path(__file__).parents[2] / ".env")
+    conn = state.get_connection()
+    # The delivered marker needs only the local DB, so check it before the
+    # secrets gate: a locked 1Password at the fallback fire must not write a
+    # FAILURE marker over a week the main fire already delivered. Mirrors
+    # briefing.run_pipeline.
+    if not args.dry_run and state.was_weekly_delivered_this_week(conn):
+        logger.info("Weekly summary already delivered this week — exiting cleanly")
+        watchdog.cancel()
+        return 0
     if not env_ready and not args.dry_run:
         _write_failure(
             OUTPUT_DIR, date.today(),
@@ -121,7 +130,6 @@ def main(argv: list[str] | None = None) -> int:
 
     config = _load_scoring_config()
     delivery_cfg = _load_delivery_config()
-    conn = state.get_connection()
     result = run_weekly(OUTPUT_DIR, date.today(), args.dry_run, config, conn, delivery_cfg)
     watchdog.cancel()
     return result

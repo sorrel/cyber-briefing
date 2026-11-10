@@ -79,3 +79,33 @@ def test_run_weekly_idempotent_when_already_delivered(tmp_path, monkeypatch):
     rc = weekly_mod.run_weekly(tmp_path, date(2026, 6, 21), dry_run=False, config={}, conn=conn)
     assert rc == 0
     assert called["summarise"] is False  # short-circuited before any work
+
+
+class TestFallbackAfterDeliveryWithSecretsLocked:
+    """The weekly mirror of the daily bug: main() checked secrets before
+    run_weekly() checked the delivered marker, so a locked 1Password at the
+    fallback fire would write FAILURE-weekly over a delivered week."""
+
+    def _main(self, tmp_path, monkeypatch, delivered):
+        conn = state.get_connection(str(tmp_path / "s.db"))
+        if delivered:
+            state.mark_weekly_delivered(conn)
+        monkeypatch.setattr(weekly_mod, "OUTPUT_DIR", tmp_path)
+        monkeypatch.setattr(weekly_mod.state, "get_connection", lambda *a, **k: conn)
+        monkeypatch.setattr(weekly_mod.config_loader, "load_env_with_timeout",
+                            lambda *a, **k: False)
+        monkeypatch.setattr(weekly_mod.config_loader, "arm_runtime_watchdog",
+                            lambda *a, **k: type("W", (), {"cancel": lambda self: None})())
+        return weekly_mod.main([])
+
+    def test_delivered_week_exits_cleanly_without_secrets(self, tmp_path, monkeypatch):
+        rc = self._main(tmp_path, monkeypatch, delivered=True)
+
+        assert rc == 0
+        assert not list(tmp_path.glob("FAILURE-weekly-*.md"))
+
+    def test_undelivered_week_still_fails_without_secrets(self, tmp_path, monkeypatch):
+        rc = self._main(tmp_path, monkeypatch, delivered=False)
+
+        assert rc == 1
+        assert len(list(tmp_path.glob("FAILURE-weekly-*.md"))) == 1

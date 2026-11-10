@@ -56,8 +56,11 @@ sources:
     url: "https://services.nvd.nist.gov/rest/json/cves/2.0"
     category: advisory
 
+  # Disabled 2026-11-04: it never produced an item (no HackerOne API
+  # credentials). Set HACKERONE_API_USER / HACKERONE_API_TOKEN and flip
+  # this back to true to use it.
   hackerone:
-    enabled: true
+    enabled: false
     type: api
     url: "https://api.hackerone.com/v1/hackers/hacktivity"
     category: bounty
@@ -144,6 +147,16 @@ sources:
       url: "https://aws.amazon.com/blogs/security/feed/"
       category: vendor
       source_name: "AWS Security"
+
+    aws_security_bulletins:
+      url: "https://aws.amazon.com/security/security-bulletins/rss/feed/"
+      category: advisory
+      source_name: "AWS Security Bulletins"
+
+    cloudflare_zero_wire:
+      url: "https://radar.cloudflare.com/security/zero-wire/rss"
+      category: advisory
+      source_name: "Cloudflare Zero Wire"
 
     feistyduck:
       url: "https://blog.ivanristic.com/atom.xml"
