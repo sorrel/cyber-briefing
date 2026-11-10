@@ -221,23 +221,26 @@ def run_pipeline(
     """
     logger = logging.getLogger("cyberbriefing")
 
+    db_conn = get_connection()
+
+    # Idempotency: the launchd fallback fires the same script, so exit cleanly
+    # if an earlier fire already delivered today. Skipped for dry-run and
+    # gather-only so manual re-runs aren't blocked. This needs only the local
+    # DB, so it runs before the secrets gate: otherwise a fallback fire that
+    # meets a locked 1Password after a successful delivery writes a FAILURE
+    # marker over a good day.
+    if not dry_run and not gather_only and was_delivered_today(db_conn):
+        logger.info("Briefing already delivered today — skipping.")
+        return True
+
     # Fail fast if secrets never loaded (1Password FIFO not fed). Do this before
-    # touching the DB or network so a locked morning frees the launchd slot for
-    # the fallback fire, and writes an *accurate* marker rather than the
+    # touching the network so a locked morning frees the launchd slot for the
+    # fallback fire, and writes an *accurate* marker rather than the
     # misleading "scoring failed / API overloaded" one that would follow.
     if _secrets_blocked(env_ready, dry_run, gather_only):
         logger.error("Secrets unavailable (1Password FIFO not fed) — aborting before gather.")
         _write_failure_marker(kind="secrets_unavailable")
         return False
-
-    db_conn = get_connection()
-
-    # Idempotency: the launchd 07:30 fallback fires the same script — exit
-    # cleanly if 06:15 already delivered today. Skipped for dry-run/gather-only
-    # so manual re-runs aren't blocked.
-    if not dry_run and not gather_only and was_delivered_today(db_conn):
-        logger.info("Briefing already delivered today — skipping.")
-        return True
 
     # --- Periodic DB maintenance (auto-prunes items >180 days old that were
     #     never included in a briefing; runs at most once a month) ---

@@ -315,3 +315,38 @@ def test_scoring_failure_marker_body_assumes_no_cause():
     body = _FAILURE_BODIES["scoring_failed"]
     for guess in ("typically", "Overloaded", "overload", "07:30", "06:15"):
         assert guess not in body, f"marker body asserts an unverified cause: {guess!r}"
+
+
+class TestFallbackAfterDeliveryWithSecretsLocked:
+    """A morning run delivered, then the fallback fire timed out loading
+    secrets and wrote a FAILURE marker over a good day. The
+    already-delivered check needs only the local DB, so it must run before
+    the secrets gate."""
+
+    def _run(self, conn, env_ready):
+        import cyberbriefing.briefing as b
+
+        with patch.object(b, "get_connection", return_value=conn), \
+             patch.object(b, "gather_all", return_value=([], 0)) as gather, \
+             patch.object(b, "_maybe_prune"), \
+             patch.object(b, "_write_failure_marker") as marker:
+            ok = b.run_pipeline({"delivery": {"method": "slack"}, "scoring": {}},
+                                env_ready=env_ready)
+        return ok, marker, gather
+
+    def test_delivered_day_skips_quietly_without_secrets(self, conn):
+        from cyberbriefing.db.state import mark_delivered_today
+        mark_delivered_today(conn)
+
+        ok, marker, gather = self._run(conn, env_ready=False)
+
+        assert ok, "a day that already delivered is a success, not a failure"
+        marker.assert_not_called()
+        gather.assert_not_called()
+
+    def test_undelivered_day_still_fails_fast_without_secrets(self, conn):
+        ok, marker, gather = self._run(conn, env_ready=False)
+
+        assert not ok
+        marker.assert_called_once_with(kind="secrets_unavailable")
+        gather.assert_not_called()
