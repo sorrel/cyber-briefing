@@ -107,7 +107,7 @@ The briefing posts as a native Slack message; anything past Slack's per-message 
 
 | Flag | Description |
 |------|-------------|
-| `--dry-run` | Full pipeline, prints to stdout instead of delivering |
+| `--dry-run` | Full pipeline, prints to stdout instead of delivering. Changes no state, so it never delays the next real run; scrapers not yet due for their interval are skipped |
 | `--gather-only` | Just gather items and show counts |
 | `--stats` | Show database statistics by source |
 | `--clear-source SOURCE` | Reset seen-state for one source so it re-gathers next run |

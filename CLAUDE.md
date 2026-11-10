@@ -8,7 +8,7 @@ A Python pipeline that produces a prioritised cybersecurity briefing, delivered 
 
 ```bash
 # Always use uv
-uv run cyberbriefing --dry-run              # Full pipeline → stdout (no state changes)
+uv run cyberbriefing --dry-run              # Full pipeline → stdout (no state changes; scrapers not yet due are skipped)
 uv run cyberbriefing --gather-only          # Collect + mark seen, no scoring or delivery
 uv run cyberbriefing --stats                # DB stats by source
 uv run cyberbriefing --clear-source tldrsec # Reset seen-state for one source

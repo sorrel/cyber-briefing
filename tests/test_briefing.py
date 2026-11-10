@@ -350,3 +350,61 @@ class TestFallbackAfterDeliveryWithSecretsLocked:
         assert not ok
         marker.assert_called_once_with(kind="secrets_unavailable")
         gather.assert_not_called()
+
+
+class TestDryRunIsStateless:
+    """CLAUDE.md promises --dry-run makes no state changes, but scrapers were
+    stamped in scraper_runs and the monthly prune ran, so a dry run shortly
+    before a real run made the real run skip every due scraper. The test
+    drives a whole dry run against a real DB and compares every table."""
+
+    _NO_APIS = {"cisa_kev": {"enabled": False}, "nvd": {"enabled": False},
+                "hackerone": {"enabled": False},
+                "github_advisories": {"enabled": False},
+                "rss_feeds": {}, "scrapers": {}}
+
+    def _snapshot(self, conn):
+        tables = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        return {t: sorted(tuple(r) for r in conn.execute(f"SELECT * FROM {t}"))
+                for t in tables}
+
+    def _run(self, conn, monkeypatch, **kwargs):
+        import cyberbriefing.briefing as b
+
+        module = MagicMock()
+        module.collect.return_value = [{"id": "i0", "source": "fake", "title": "t",
+                                        "url": "http://x/0", "published": ""}]
+        monkeypatch.setattr(b, "_SCRAPER_REGISTRY", [("fake", module, 24)])
+        scored = {"id": "i0", "source": "fake", "title": "t", "url": "http://x/0",
+                  "score": 20, "cluster_id": "c0"}
+        with patch.object(b, "get_connection", return_value=conn), \
+             patch.object(b, "score_items", return_value={"items": [scored]}), \
+             patch.object(b, "cluster_items", return_value=[scored]), \
+             patch.object(b, "format_briefing", return_value=("T", "body", [])), \
+             patch.object(b, "deliver_to_stdout", return_value=True), \
+             patch.object(b, "deliver", return_value=True):
+            b.run_pipeline({"sources": self._NO_APIS, "delivery": {"method": "slack"},
+                            "scoring": {}}, **kwargs)
+
+    def test_dry_run_leaves_every_table_unchanged(self, conn, monkeypatch):
+        before = self._snapshot(conn)
+
+        self._run(conn, monkeypatch, dry_run=True)
+
+        assert self._snapshot(conn) == before
+
+    def test_real_run_still_stamps_the_scraper_and_prunes(self, conn, monkeypatch):
+        from cyberbriefing.db.state import should_check_scraper
+
+        self._run(conn, monkeypatch)
+
+        assert not should_check_scraper(conn, "fake", 24)
+        assert not should_check_scraper(conn, "_db_prune", 24 * 30)
+
+    def test_gather_only_still_stamps_the_scraper(self, conn, monkeypatch):
+        from cyberbriefing.db.state import should_check_scraper
+
+        self._run(conn, monkeypatch, gather_only=True)
+
+        assert not should_check_scraper(conn, "fake", 24)
