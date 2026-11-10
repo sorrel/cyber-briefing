@@ -6,7 +6,7 @@ A cybersecurity intelligence briefing that can be delivered to Bear Notes or a S
 
 Each run is a three-stage pipeline. You choose when (or whether) it runs — see [Scheduling](#scheduling-with-launchd):
 
-1. **Gather** — Pulls from 40 sources: CISA KEV, NVD, HackerOne, GitHub Advisories, NCSC, The Hacker News, PortSwigger, Krebs on Security, BleepingComputer, ENISA, ICO, AWS Security, AWS Security Bulletins, Cloudflare Zero Wire, Wiz, Snyk, OWASP, Trail of Bits, Project Zero, Risky Business, TLDR Infosec, Aikido, CloudSecList, FeistyDuck, This Week in Security, and more. New RSS feeds are a config entry away.
+1. **Gather** — Pulls from 39 sources: CISA KEV, NVD, GitHub Advisories, NCSC, The Hacker News, PortSwigger, Krebs on Security, BleepingComputer, ENISA, ICO, AWS Security, AWS Security Bulletins, Cloudflare Zero Wire, Wiz, Snyk, OWASP, Trail of Bits, Project Zero, Risky Business, TLDR Infosec, Aikido, CloudSecList, FeistyDuck, This Week in Security, and more. New RSS feeds are a config entry away.
 2. **Prioritise** — Sends items to the Claude API for scoring across four dimensions (geographic relevance, domain relevance, actionability, novelty). The weights, the thresholds and the model are all configurable.
 3. **Deliver** — Writes the prioritised items to Bear Notes or a Slack channel, grouped by urgency tier, with links and short annotations. How many items appear is set by `scoring.max_items` (ships as 20).
 
@@ -118,7 +118,7 @@ The briefing posts as a native Slack message; anything past Slack's per-message 
 | Key | Source | Required? |
 |-----|--------|-----------|
 | `ANTHROPIC_API_KEY` | console.anthropic.com | Yes |
-| `HACKERONE_API_USER` + `HACKERONE_API_TOKEN` | HackerOne Settings | Optional |
+| `HACKERONE_API_USER` + `HACKERONE_API_TOKEN` | HackerOne Settings | Optional; the collector is off until `sources.hackerone.enabled: true` |
 | `NVD_API_KEY` | nvd.nist.gov | Optional (higher rate limits) |
 | `GITHUB_TOKEN` | GitHub Settings | Optional (for advisories) |
 | `SLACK_BOT_TOKEN` | Slack app (chat:write) | Optional (only for `delivery.method: slack`) |

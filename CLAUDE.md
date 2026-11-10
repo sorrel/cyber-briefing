@@ -2,7 +2,7 @@
 
 ## What this is
 
-A Python pipeline that produces a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel. It gathers from 40 live sources (28 RSS feeds, 8 scrapers, 4 APIs), scores each item with Claude, and formats a tiered markdown document.
+A Python pipeline that produces a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel. It gathers from 39 live sources (28 RSS feeds, 8 scrapers, 3 APIs; the HackerOne collector exists but is disabled), scores each item with Claude, and formats a tiered markdown document.
 
 ## Running it
 
@@ -37,7 +37,7 @@ src/cyberbriefing/     ← the importable package (src layout); imports are cybe
     rss.py             ← Generic RSS/Atom for all feed sources
     cisa_kev.py        ← CISA Known Exploited Vulnerabilities catalogue
     nvd.py             ← NVD CVE API (CVSS ≥ 7.0 filter)
-    hackerone.py       ← HackerOne Hacktivity (requires auth)
+    hackerone.py       ← HackerOne Hacktivity (requires auth; disabled in config.yaml)
     github_advisories.py ← GitHub GraphQL advisories
     enisa_scraper.py   ← ENISA publications
     ico_scraper.py     ← ICO enforcement actions
@@ -189,7 +189,7 @@ Related fail-fast: `briefing._secrets_blocked()` aborts a real delivery run whos
 A gitignored `.env` at the repo root, loaded via `load_env_with_timeout`. Either a plain file or a 1Password local-env FIFO works — see constraint 3 above for what the FIFO costs. Keys (names as the code reads them):
 
 - `ANTHROPIC_API_KEY` — required, for Claude scoring
-- `HACKERONE_API_USER` / `HACKERONE_API_TOKEN` — optional, HackerOne collector
+- `HACKERONE_API_USER` / `HACKERONE_API_TOKEN` — optional, HackerOne collector (also set `sources.hackerone.enabled: true`)
 - `NVD_API_KEY` — optional, higher NVD rate limits
 - `GITHUB_TOKEN` — optional, GitHub Advisories collector
 - `SLACK_BOT_TOKEN` — optional, only for `delivery.method: slack`
