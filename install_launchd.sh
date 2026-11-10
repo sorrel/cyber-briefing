@@ -17,7 +17,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
-UV="${UV:-/opt/homebrew/bin/uv}"
 GUI="gui/$(id -u)"
 
 ARCHETYPE=""        # "" = always-on desktop, ".laptop" = sleeping laptop
@@ -140,9 +139,20 @@ else
     fi
 fi
 
+# No gather-only smoke test here: --gather-only marks every item it collects
+# as seen, so a reinstall on a morning the agents missed would swallow that
+# day's briefing. Use `uv run cyberbriefing --dry-run` to test without state.
+
 echo ""
-echo "=== Step 5: Gather-only test (no scoring, no API calls, no delivery) ==="
-cd "$SCRIPT_DIR" && "$UV" run cyberbriefing --gather-only
+echo "=== Step 5: Background item approval ==="
+# macOS Background Task Management skips a "disallowed" agent at login, yet a
+# manual bootstrap (as above) still succeeds, so the install looks healthy
+# until the next reboot or log-out. Rewriting a plist re-registers it and can
+# flip it back to disallowed. launchd runs these via /usr/bin/caffeinate, so
+# that is the name System Settings shows.
+echo "  ! Confirm System Settings > General > Login Items & Extensions >"
+echo "    Allow in the Background has every 'caffeinate' entry switched on."
+echo "    A disallowed agent is not loaded at login and silently stops firing."
 
 echo ""
 echo "=== Step 6: Recent logs ==="

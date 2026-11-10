@@ -170,7 +170,7 @@ uv run cyberbriefing-weekly             # → Bear or Slack (per delivery.method
 
 ## Operational constraints (learned the hard way)
 
-Four failure modes cost real debugging time. The fixes are in the code; the reasoning is here so it isn't re-derived or undone.
+Five failure modes cost real debugging time. The fixes are in the code; the reasoning is here so it isn't re-derived or undone.
 
 **1. Dark-wake DNS (EBADF).** On an always-on Mac, macOS holds the user session in a reduced "dark wake" overnight; `mDNSResponder`'s mach port is gated, and `getaddrinfo` returns `OSError: [Errno 9] Bad file descriptor` on every lookup — every collector fails. Two things are required together: the Aqua/Interactive plist context (a daemon-style spawn has no usable resolver port at all), **and** a `pmset repeat` wake a few minutes before the fire. `caffeinate -is` only blocks *new* sleep transitions during the run; it cannot restore a session already degraded at start. Ruled out and not worth re-exploring: DNS cache flush, `mDNSResponder` HUP, forcing `AF_INET`, respawning for fresh FDs, longer post-restart probe windows.
 
@@ -179,6 +179,8 @@ Four failure modes cost real debugging time. The fixes are in the code; the reas
 **3. Env-load hang.** A `.env` supplied as a 1Password local-env FIFO blocks in `open()` until 1Password attaches a writer. With 1Password locked at an unattended fire that blocked *forever* — no exception, no logs, no backup, slot held for an hour. `config_loader.load_env_with_timeout()` bounds each load with `SIGALRM` (EINTR, no leaked fd, so the single-reader FIFO stays retryable) and retries `30s × 2`; a plain regular-file `.env` returns instantly and is unaffected. The call lives in `main()` **after logging is configured**, not at import time — keep it there, or failures go invisible again and the test suite inherits the FIFO's behaviour.
 
 **4. Whole-process watchdog.** `config_loader.arm_runtime_watchdog()` — a daemon-thread 15-minute process timeout armed at the top of `main()` in both entry points, so any future hang can't hold a launchd slot. A thread, not `SIGALRM`, so it never collides with (3). Caveat: the Anthropic client's 600s read timeout plus a half-size retry means a badly degraded API could approach 15 min and be killed mid-run — the fallback fire then retries.
+
+**5. Background item disallowed (agents vanish after a reboot).** macOS Background Task Management can mark a LaunchAgent `disallowed` (System Settings > General > Login Items & Extensions > Allow in the Background; the entries show as `caffeinate`, the plists' executable). A disallowed agent is not loaded at login, so after the next reboot or log-out nothing fires and nothing is logged: no `/tmp` logs, no backup, no `FAILURE` file. A manual `launchctl bootstrap` still succeeds, which makes a reinstall look healthy until the next reboot. Rewriting a plist re-registers it and can flip it back. Diagnose with `sudo sfltool dumpbtm` (look for `Disposition: [enabled, disallowed, ...]`); `./healthcheck.sh` flags the agent as not loaded. This is why `install_launchd.sh` no longer runs `--gather-only`: it marks every gathered item seen, so reinstalling on a missed morning would swallow that day's briefing.
 
 Related fail-fast: `briefing._secrets_blocked()` aborts a real delivery run whose env load timed out *before* gather, writing a `secrets_unavailable` marker (accurate cause, not a misleading "scoring failed"). `--stats`, `--gather-only` and `--dry-run` are exempt.
 
@@ -215,4 +217,5 @@ Open ideas, none of them urgent — the pipeline has run without them for months
 - **Bear note missing**: expected on some mornings and undetectable client-side — the markdown backup in `~/cyberbriefing-output/` is always written; open that.
 - **`FAILURE-<date>.md`**: every source returned zero items — see constraint 2; check `/tmp/cyberbriefing.err` and any Network Extension (TripMode, Little Snitch, VPN).
 - **`FAILURE-…-secrets_unavailable`**: the `.env` load timed out — unlock the secrets manager, or check the `.env` is readable.
+- **No briefing, no log, no backup, no `FAILURE` file**: the agents are not loaded. Run `./healthcheck.sh`; usually constraint 5 (background item disallowed).
 - **A scraper returning zero items**: the site was probably redesigned; check that scraper's HTML selectors.

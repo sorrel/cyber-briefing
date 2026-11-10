@@ -47,7 +47,11 @@ check_agent() {
     local label="$1" errlog="$2" print spawn last_exit
     print=$(launchctl print "gui/$(id -u)/$label" 2>&1)
     if [[ "$print" == *"Could not find service"* ]]; then
-        bad "agent $label not loaded — install it (see CLAUDE.md / install_launchd.sh)"
+        bad "agent $label not loaded. If it was installed, the usual cause is macOS"
+        printf '      disallowing it: switch on its "caffeinate" entry under System Settings >\n'
+        printf '      General > Login Items & Extensions > Allow in the Background, then run\n'
+        printf '      launchctl bootstrap gui/%s %s\n' "$(id -u)" "$HOME/Library/LaunchAgents/$label.plist"
+        printf '      (bootstrap is safe; ./install_launchd.sh also rewrites the plist)\n'
         return
     fi
     ok "agent $label loaded in gui/$(id -u)"
