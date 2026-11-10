@@ -2,7 +2,7 @@
 
 ## What this is
 
-A Python pipeline that produces a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel. It gathers from 38 live sources (26 RSS feeds, 8 scrapers, 4 APIs), scores each item with Claude, and formats a tiered markdown document.
+A Python pipeline that produces a prioritised cybersecurity briefing, delivered to Bear Notes or a Slack channel. It gathers from 40 live sources (28 RSS feeds, 8 scrapers, 4 APIs), scores each item with Claude, and formats a tiered markdown document.
 
 ## Running it
 

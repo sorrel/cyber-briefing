@@ -145,6 +145,16 @@ sources:
       category: vendor
       source_name: "AWS Security"
 
+    aws_security_bulletins:
+      url: "https://aws.amazon.com/security/security-bulletins/rss/feed/"
+      category: advisory
+      source_name: "AWS Security Bulletins"
+
+    cloudflare_zero_wire:
+      url: "https://radar.cloudflare.com/security/zero-wire/rss"
+      category: advisory
+      source_name: "Cloudflare Zero Wire"
+
     feistyduck:
       url: "https://blog.ivanristic.com/atom.xml"
       category: research
